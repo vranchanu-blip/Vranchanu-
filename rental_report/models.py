@@ -25,6 +25,11 @@ class Reservation:
     rate_date: Optional[date] = None
     extra: dict = field(default_factory=dict)
 
+    @property
+    def key(self) -> tuple:
+        """Уникальный ключ для отбрасывания повторов (в новых выгрузках Airbnb нет кода)."""
+        return (self.platform, self.code or f"{self.guest}|{self.checkin}")
+
     def ron(self, amount: Decimal) -> Decimal:
         if self.currency == "RON":
             return amount

@@ -82,3 +82,37 @@ def test_full_run(tmp_path, monkeypatch):
     assert main(args) == 0
     root = ET.parse(out / "SAGA_import_2026-10.xml").getroot()
     assert root.find("Factura/Antet/FacturaNumar").text == "CAZ100"
+
+
+def test_airbnb_new_russian_format():
+    rows = airbnb.load(DATA / "airbnb_ru_sample.csv")
+    assert [r.guest for r in rows] == ["Test Guest One", "Test Guest Two", "Тест Гость"]
+    r = rows[0]
+    assert (r.gross, r.commission, r.net, r.currency) == (
+        Decimal("1032.50"), Decimal("30.98"), Decimal("1001.52"), "RON")
+    assert (r.checkin, r.checkout, r.nights, r.payout_date) == (
+        date(2026, 9, 29), date(2026, 10, 2), 3, date(2026, 9, 30))
+
+
+def test_booking_pdf_text():
+    from rental_report import booking_pdf
+    text = (DATA / "booking_statement_ru.txt").read_text(encoding="utf-8")
+    assert booking_pdf.is_booking_statement(text)
+    rows, total = booking_pdf.parse_text(text)
+    assert [(r.code, r.guest, r.nights) for r in rows] == [
+        ("5816337346", "Karl Test", 1), ("5743695472", "Ana-Maria Test Two", 4)]
+    assert rows[1].gross == Decimal("1120") and rows[1].commission == Decimal("166.52")
+    assert rows[1].checkin == date(2026, 9, 24) and total == Decimal("1472.00")
+
+
+def test_platform_basis_airbnb_by_payout(tmp_path, monkeypatch):
+    (tmp_path / "inbox").mkdir()
+    shutil.copy(DATA / "airbnb_ru_sample.csv", tmp_path / "inbox")
+    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text())
+    cfg["expect_booking"] = False
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True))
+    assert main(["--month", "2026-09", "--config", str(tmp_path / "config.yaml")]) == 0
+    root = ET.parse(tmp_path / "reports" / "2026-09" / "SAGA_import_2026-09.xml").getroot()
+    names = [f.findtext("Antet/ClientNume") for f in root.findall("Factura")]
+    assert "Test Guest One" in names and len(names) == 3   # выезд 02.10, но выплата 30.09
+    assert root.find("Factura/Antet/ClientCIF").text == "0000000000000"

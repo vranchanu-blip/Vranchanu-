@@ -39,7 +39,7 @@ def _invoice(root, cfg: dict, number: str, inv_date: date, client: str, client_i
     _sub(a, "FurnizorIBAN", co.get("iban", ""))
     _sub(a, "ClientNume", client)
     _sub(a, "ClientInformatiiSuplimentare", client_info)
-    _sub(a, "ClientCIF", "")
+    _sub(a, "ClientCIF", cfg.get("saga", {}).get("client_cif", ""))
     _sub(a, "ClientNrRegCom", "")
     _sub(a, "ClientJudet", "")
     _sub(a, "ClientAdresa", "")
@@ -103,7 +103,7 @@ def write(rows: list[Reservation], path: Path, cfg: dict, period_end: date) -> t
             d = min(r.checkout or period_end, period_end)
             descr = f"Servicii cazare {r.checkin:%d.%m.%Y}-{r.checkout:%d.%m.%Y}, {r.listing}".strip(", ")
             _invoice(root, cfg, f"{series}{number}", d, r.guest or "Persoană fizică",
-                     f"{r.platform} {r.code}" + (f", {r.country}" if r.country else ""),
+                     f"{r.platform} {r.code}".strip() + (f", {r.country}" if r.country else ""),
                      [(descr, Decimal(r.nights or 1), r.gross_ron)], vat_rate)
             number += 1
             count += 1

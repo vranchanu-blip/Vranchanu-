@@ -63,6 +63,15 @@ def pick(row: dict, names: Iterable[str], default=None):
     return default
 
 
+MONTHS = {  # ru / ro / en сокращения → номер месяца
+    "янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7, "авг": 8,
+    "сен": 9, "окт": 10, "ноя": 11, "дек": 12,
+    "ian": 1, "feb": 2, "mar": 3, "apr": 4, "mai": 5, "iun": 6, "iul": 7, "aug": 8,
+    "sep": 9, "oct": 10, "noi": 11, "nov": 11, "dec": 12, "jan": 1, "may": 5, "jun": 6, "jul": 7,
+}
+_TEXT_DATE = re.compile(r"^(\d{1,2})\s+([^\d\s.,]+)\.?,?\s+(\d{4})$")
+
+
 def parse_date(value) -> Optional[date]:
     if value in (None, ""):
         return None
@@ -72,6 +81,11 @@ def parse_date(value) -> Optional[date]:
         return value
     s = str(value).strip()
     s = re.sub(r"\s+\d{1,2}:\d{2}(:\d{2})?.*$", "", s)  # отбросить время
+    m = _TEXT_DATE.match(s.replace("\xa0", " "))
+    if m:
+        month = MONTHS.get(m.group(2).lower()[:3])
+        if month:
+            return date(int(m.group(3)), month, int(m.group(1)))
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(s, fmt).date()

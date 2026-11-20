@@ -5,11 +5,12 @@ import shutil
 import sys
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
 
-from . import airbnb, booking, excel_report, saga_xml
+from . import airbnb, booking, booking_pdf, excel_report, saga_xml
 from .bnr import BnrRates
 from .parsing import read_table
 
@@ -23,6 +24,12 @@ def previous_month(today: date) -> str:
 
 
 def detect_platform(path: Path) -> str | None:
+    if path.suffix.lower() == ".pdf":
+        try:
+            return "booking_pdf" if booking_pdf.is_booking_statement(booking_pdf.extract_text(path)) else None
+        except Exception as e:  # noqa: BLE001
+            print(f"  ! {path.name}: {e}")
+            return None
     try:
         rows = read_table(path)
     except Exception as e:  # noqa: BLE001
@@ -31,7 +38,8 @@ def detect_platform(path: Path) -> str | None:
     if not rows:
         return None
     keys = {k.lower() for k in rows[0]}
-    if keys & {"confirmation code", "cod de confirmare", "код подтверждения"}:
+    if keys & {"confirmation code", "cod de confirmare", "код подтверждения"} or (
+            keys & {"guest", "oaspete", "гость"} and keys & {"start date", "data de început", "дата начала"}):
         return "airbnb"
     if keys & {"book number", "reservation number", "număr rezervare", "номер бронирования"}:
         return "booking"
@@ -61,29 +69,44 @@ def main(argv=None) -> int:
     inbox.mkdir(parents=True, exist_ok=True)
 
     print(f"Отчёт за {LUNI[m]} {y}. Папка с выгрузками: {inbox}")
-    reservations, seen, found = [], set(), {"airbnb": 0, "booking": 0}
-    files = sorted(p for p in inbox.rglob("*") if p.suffix.lower() in (".csv", ".xlsx", ".xls"))
+    reservations, seen, found, notes = [], set(), {"airbnb": 0, "booking": 0}, []
+    files = sorted(p for p in inbox.rglob("*") if p.suffix.lower() in (".csv", ".xlsx", ".xls", ".pdf"))
     for p in files:
         kind = detect_platform(p)
         if kind is None:
             print(f"  - пропущен (не распознан): {p.name}")
             continue
-        found[kind] += 1
-        items = airbnb.load(p) if kind == "airbnb" else booking.load(
-            p, cfg.get("booking_currency", "EUR"), cfg.get("include_cancelled_with_fee", True))
+        found["airbnb" if kind == "airbnb" else "booking"] += 1
+        if kind == "airbnb":
+            items = airbnb.load(p, cfg.get("airbnb_currency", "RON"))
+        elif kind == "booking_pdf":
+            items, total = booking_pdf.load(p)
+            s = sum(r.gross for r in items)
+            if total is not None and abs(total - s) > Decimal("0.05"):
+                notes.append(f"{p.name}: сумма строк {s:,.2f}, а Booking пишет «итого» {total:,.2f} "
+                             f"(разница {s - total:,.2f}) — проверьте в Extranet")
+        else:
+            items = booking.load(p, cfg.get("booking_currency", "EUR"),
+                                 cfg.get("include_cancelled_with_fee", True))
         print(f"  + {p.name}: {kind}, {len(items)} записей")
         for r in items:
-            key = (r.platform, r.code)
-            if key not in seen:
-                seen.add(key)
+            if r.key not in seen:
+                seen.add(r.key)
                 reservations.append(r)
 
     warnings = [f"Не найден файл {name.capitalize()} в папке {inbox.name}"
                 for name, n in found.items() if n == 0 and cfg.get(f"expect_{name}", True)]
 
-    basis = cfg.get("date_basis", "checkout")  # к какому месяцу относим бронь
+    # к какому месяцу относим бронь. platform = как в ежемесячных документах площадок:
+    # Airbnb — по дате выплаты, Booking — по дате выезда
+    basis = cfg.get("date_basis", "platform")
+
     def ref_date(r):
-        return {"checkin": r.checkin, "payout": r.payout_date or r.checkout}.get(basis, r.checkout)
+        if basis == "checkin":
+            return r.checkin
+        if basis == "payout" or (basis == "platform" and r.platform == "Airbnb"):
+            return r.payout_date or r.checkout
+        return r.checkout
     rows = [r for r in reservations if ref_date(r) and start <= ref_date(r) <= end]
     rows.sort(key=lambda r: (ref_date(r), r.platform, r.guest))
 
@@ -114,6 +137,8 @@ def main(argv=None) -> int:
     total = sum(r.gross_ron for r in rows)
     summary = (f"{title}\nRezervări: {len(rows)}  |  Total brut: {total:,.2f} RON\n"
                + "".join(f"ATENȚIE: {w}\n" for w in warnings))
+    for n in notes:
+        print(f"  ⚠ {n}")
     print("\n" + summary)
     for o in outputs:
         print(f"  → {o}")

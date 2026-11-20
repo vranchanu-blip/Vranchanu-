@@ -13,12 +13,15 @@ input_dir: inbox             # сюда кладутся выгрузки из B
 output_dir: reports          # здесь появятся отчёты: reports/2026-10/...
 archive_inputs: true         # копировать исходные файлы в папку отчёта
 
-# К какому месяцу относить бронирование: checkout (дата выезда), checkin, payout (Airbnb — дата выплаты)
-date_basis: checkout
+# К какому месяцу относить бронирование:
+#   platform — как в ежемесячных документах: Airbnb по дате выплаты, Booking по дате выезда
+#   checkout — по дате выезда, checkin — по дате заезда, payout — по дате выплаты
+date_basis: platform
 
 # Курс BNR: same_day — курс на дату выезда; previous_day — курс предыдущего банковского дня
 bnr_mode: same_day
 
+airbnb_currency: RON         # валюта сумм в выгрузке Airbnb, если в ней нет колонки «Валюта»
 booking_currency: EUR        # если в выгрузке Booking валюта не указана
 include_cancelled_with_fee: true   # отменённые брони, за которые всё же взяли плату
 
@@ -33,6 +36,7 @@ saga:
   next_number: 1             # первый номер (дальше программа считает сама в state.json)
   article_code: "CAZARE"
   unit: "noapte"
+  client_cif: "0000000000000"  # CNP клиента-физлица неизвестен → 13 нулей (так принимает e-Factura/SPV)
 
 email:                       # необязательно: отправка бухгалтеру
   auto_send: false
