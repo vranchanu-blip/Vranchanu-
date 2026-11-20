@@ -1,0 +1,6 @@
+Date,Arriving by date,Type,Confirmation code,Booking date,Start date,End date,Nights,Guest,Listing,Details,Reference code,Currency,Amount,Paid out,Service fee,Fast Pay Fee,Cleaning fee,Gross earnings,Occupancy taxes,Earnings year
+10/04/2026,10/05/2026,Reservation,HMABC12345,09/15/2026,10/03/2026,10/07/2026,4,Anna Müller,Apartament Centru,,,EUR,291.00,,9.00,,20.00,300.00,,2026
+10/04/2026,10/05/2026,Payout,,,,,,,,Transfer to IBAN ****1234,,EUR,,291.00,,,,,,
+10/21/2026,10/22/2026,Reservation,HMXYZ67890,10/01/2026,10/20/2026,10/23/2026,3,John Smith,Apartament Centru,,,EUR,232.80,,7.20,,20.00,240.00,,2026
+10/25/2026,10/26/2026,Adjustment,HMXYZ67890,,10/20/2026,10/23/2026,3,John Smith,Apartament Centru,,,EUR,-10.00,,,,,-10.00,,2026
+11/01/2026,11/02/2026,Reservation,HMNOV00001,10/10/2026,10/30/2026,11/02/2026,3,Pierre Dubois,Apartament Centru,,,EUR,194.00,,6.00,,20.00,200.00,,2026

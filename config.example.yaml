@@ -1,0 +1,45 @@
+# Скопируйте этот файл в config.yaml и заполните.
+
+company:                     # данные фирмы / PFA (попадут в файл для SAGA)
+  name: "NUME FIRMA SRL"
+  cif: "RO12345678"
+  reg_com: "J40/1234/2020"
+  address: "Str. Exemplu 1, București"
+  bank: ""
+  iban: ""
+  capital: ""
+
+input_dir: inbox             # сюда кладутся выгрузки из Booking и Airbnb (CSV / XLSX)
+output_dir: reports          # здесь появятся отчёты: reports/2026-10/...
+archive_inputs: true         # копировать исходные файлы в папку отчёта
+
+# К какому месяцу относить бронирование: checkout (дата выезда), checkin, payout (Airbnb — дата выплаты)
+date_basis: checkout
+
+# Курс BNR: same_day — курс на дату выезда; previous_day — курс предыдущего банковского дня
+bnr_mode: same_day
+
+booking_currency: EUR        # если в выгрузке Booking валюта не указана
+include_cancelled_with_fee: true   # отменённые брони, за которые всё же взяли плату
+
+# Ставка НДС (TVA) в процентах. 0 — если вы не плательщик НДС.
+# Уточните у бухгалтера (для размещения с 08.2025 — 11%).
+vat_rate: 0
+
+saga:
+  enabled: true
+  mode: per_reservation      # per_reservation — документ на каждого клиента; per_platform — один на платформу за месяц
+  series: "CAZ"              # серия документов
+  next_number: 1             # первый номер (дальше программа считает сама в state.json)
+  article_code: "CAZARE"
+  unit: "noapte"
+
+email:                       # необязательно: отправка бухгалтеру
+  auto_send: false
+  send_with_warnings: false
+  host: smtp.gmail.com
+  port: 587
+  user: "vash.adres@gmail.com"
+  password_env: REPORT_SMTP_PASSWORD   # пароль приложения Gmail — в переменной окружения, не в файле
+  to: ["contabil@example.ro"]
+  cc: []

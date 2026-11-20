@@ -1,0 +1,5 @@
+Book number,Booked by,Guest name(s),Check-in,Check-out,Booked on,Status,Rooms,People,Adults,Children,Children's ages,Price,Commission %,Commission amount,Payment status,Payment method,Remarks,Booker group,Booker country,Travel purpose,Device,Unit type,Duration (nights),Cancellation date,Address,Phone number
+4123456789,"Popescu, Ion",Ion Popescu,2026-10-10,2026-10-12,2026-09-20 14:02:11,ok,1,2,2,0,,180 EUR,15,27 EUR,Paid online,,,Couple,ro,Leisure,desktop,Apartament Centru,2,,,
+4123456790,"Kowalski, Jan",Jan Kowalski,2026-10-14,2026-10-18,2026-10-01 09:15:00,ok,1,1,1,0,,"412,50 EUR",15,"61,88 EUR",Paid online,,,Solo traveller,pl,Business,mobile,Apartament Centru,4,,,
+4123456791,"Rossi, Marco",Marco Rossi,2026-10-24,2026-10-26,2026-10-05 11:00:00,cancelled_by_guest,1,2,2,0,,0 EUR,15,0 EUR,,,,Couple,it,Leisure,mobile,Apartament Centru,2,2026-10-07,,
+4123456792,"Ivanova, Maria",Maria Ivanova,2026-09-28,2026-10-01,2026-09-01 10:00:00,ok,1,2,2,0,,270 EUR,15,40.50 EUR,Paid online,,,Couple,md,Leisure,desktop,Apartament Centru,3,,,
