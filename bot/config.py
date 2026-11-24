@@ -6,10 +6,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-DEFAULT_SOURCE_PAGES = (
-    "https://cetatenie.just.ro/stadiu-dosar/",
-    "https://cetatenie.just.ro/ordine-articolul-11/",
-)
+DEFAULT_SOURCE_PAGES = ("https://cetatenie.just.ro/stadiu-dosar/",)
 
 
 @dataclass(frozen=True)

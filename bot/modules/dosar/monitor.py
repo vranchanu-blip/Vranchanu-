@@ -104,10 +104,17 @@ class AncMonitor:
 
     async def _cycle(self) -> CycleResult:
         result = CycleResult(started_at=utcnow())
-        result.bootstrap = await self.db.get_kv("anc_bootstrapped") is None
+        # Страницы, документы с которых уже есть в базе. Документы с «новой» страницы
+        # (первый запуск или добавленная страница) — это архив: уведомлений по ним не шлём.
+        known_pages = {
+            r["source_page"]
+            for r in await self.db.fetchall("SELECT DISTINCT source_page FROM anc_documents")
+        }
+        result.bootstrap = not known_pages
 
         links: list[PdfLink] = []
         seen: set[str] = set()
+        ok_pages: list[str] = []
         for page in self.pages:
             try:
                 page_html = await self.fetcher.get_text(page)
@@ -115,6 +122,7 @@ class AncMonitor:
                 result.errors.append(f"{page}: {exc!r}")
                 continue
             result.pages_ok += 1
+            ok_pages.append(page)
             for link in extract_pdf_links(page_html, page, self.pdf_filter):
                 if link.url not in seen:
                     seen.add(link.url)
@@ -123,22 +131,35 @@ class AncMonitor:
 
         for link in links:
             try:
-                await self._process_link(link, result)
+                await self._process_link(link, result, silent=link.source_page not in known_pages)
             except Exception as exc:  # noqa: BLE001
                 result.errors.append(f"{link.url}: {exc!r}")
                 await self.db.execute(
                     "UPDATE anc_documents SET error = ? WHERE url = ?", (repr(exc)[:500], link.url)
                 )
 
-        if result.bootstrap:
-            if result.pages_ok:
-                await self.db.set_kv("anc_bootstrapped", result.started_at)
-            # Первичная загрузка архива — не рассылаем уведомления о старых документах.
-            result.new_mentions.clear()
-            result.new_orders.clear()
+        await self._retire_removed_docs(ok_pages, seen)
         return result
 
-    async def _process_link(self, link: PdfLink, result: CycleResult) -> None:
+    async def _retire_removed_docs(self, ok_pages: list[str], current_urls: set[str]) -> None:
+        """ANC заменяет списки файлами с новым именем — строки из убранных PDF больше не «текущие»."""
+        if not ok_pages:
+            return
+        marks = ",".join("?" * len(ok_pages))
+        rows = await self.db.fetchall(
+            f"SELECT url FROM anc_documents WHERE source_page IN ({marks})", ok_pages
+        )
+        gone = [r["url"] for r in rows if r["url"] not in current_urls]
+        if gone:
+            conn = self.db.conn
+            assert conn
+            await conn.executemany(
+                "UPDATE anc_mentions SET active = 0 WHERE doc_url = ? AND active = 1",
+                [(u,) for u in gone],
+            )
+            await conn.commit()
+
+    async def _process_link(self, link: PdfLink, result: CycleResult, silent: bool = False) -> None:
         row = await self.db.fetchone("SELECT sha256 FROM anc_documents WHERE url = ?", (link.url,))
         is_new_doc = row is None
         if is_new_doc:
@@ -171,12 +192,23 @@ class AncMonitor:
             (sha, utcnow(), link.title, link.url),
         )
         result.pdf_changed += 1
+        if silent:
+            return
         if is_new_doc and link.kind == "ordin":
             result.new_orders.append(link)
-        result.new_mentions.extend(
-            NewMention(number=n, doc_url=link.url, doc_title=link.title, kind=link.kind, line=line)
-            for n, line in sorted(added)
+        for n, line in sorted(added):
+            if link.kind != "ordin" and await self._line_seen_elsewhere(n, line, link.url):
+                continue  # та же строка уже была в прошлой версии списка — это не изменение
+            result.new_mentions.append(
+                NewMention(number=n, doc_url=link.url, doc_title=link.title, kind=link.kind, line=line)
+            )
+
+    async def _line_seen_elsewhere(self, number: str, line: str, url: str) -> bool:
+        row = await self.db.fetchone(
+            "SELECT 1 FROM anc_mentions WHERE number = ? AND line = ? AND doc_url != ? LIMIT 1",
+            (number, line, url),
         )
+        return row is not None
 
     async def _apply_mentions(self, url: str, mentions: dict[str, set[str]]) -> set[tuple[str, str]]:
         """Синхронизирует строки документа с БД. Возвращает впервые появившиеся (номер, строка)."""

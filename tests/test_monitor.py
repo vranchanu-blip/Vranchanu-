@@ -68,7 +68,7 @@ async def test_site_down_does_not_bootstrap(db):
     mon = AncMonitor(db, FakeFetcher({}, {}), (STADIU,), download_delay=0)
     r = await mon.run_cycle()
     assert r.pages_ok == 0 and r.errors
-    assert await db.get_kv("anc_bootstrapped") is None
+    assert await db.fetchall("SELECT * FROM anc_documents") == []
 
 
 async def test_dosar_service_limits(db):
@@ -80,3 +80,32 @@ async def test_dosar_service_limits(db):
         assert await svc.add(1, f"{i}/RD/2020", None)
     assert await svc.add(1, "99/RD/2020", None) is None
     assert await svc.toggle_orders(1) is False
+
+
+async def test_renamed_stadiu_list_and_new_page(db):
+    old = "https://anc/s/Art-11-2022-update-01.10.2026.pdf"
+    new = "https://anc/s/Art-11-2022-update-10.11.2026.pdf"
+    files = {
+        old: make_pdf(["500/RD/2022 05.05.2022", "501/RD/2022 06.05.2022"]),
+        new: make_pdf(["500/RD/2022 05.05.2022", "501/RD/2022 06.05.2022 ordin 77/P"]),
+        "https://anc/o/9.pdf": make_pdf(["1. Q W 500/RD/2022"]),
+    }
+    fetcher = FakeFetcher({STADIU: f'<a href="{old}">Art 11 2022</a>'}, files)
+    mon = AncMonitor(db, fetcher, (STADIU,), download_delay=0)
+    await mon.run_cycle()
+
+    # ANC выложил обновлённый список под новым именем, старый убран со страницы
+    fetcher.pages[STADIU] = f'<a href="{new}">Art 11 2022</a>'
+    r = await mon.run_cycle()
+    assert [(m.number, m.line) for m in r.new_mentions] == [("501/RD/2022", "501/RD/2022 06.05.2022 ordin 77/P")]
+
+    svc = DosarService(db)
+    active = await svc.mentions("500/RD/2022", active_only=True)
+    assert [a["url"] for a in active] == [new]
+
+    # Добавили новую страницу-источник: её архив не должен прийти как «новые приказы»
+    fetcher.pages[ORDINE] = '<a href="/o/9.pdf">Ordin 9</a>'
+    mon.pages = (STADIU, ORDINE)
+    r = await mon.run_cycle()
+    assert r.new_orders == [] and r.new_mentions == []
+    assert (await svc.year_progress("500/RD/2022")).in_orders == 1

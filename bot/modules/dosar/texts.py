@@ -43,6 +43,12 @@ def waiting_line(submitted_on: str | None) -> str:
 
 def mention_block(rows: list[aiosqlite.Row], limit: int = 5) -> str:
     out = []
+    unique, seen = [], set()
+    for r in rows:  # одна и та же строка из разных версий списка — показываем один раз
+        if r["line"] not in seen:
+            seen.add(r["line"])
+            unique.append(r)
+    rows = unique
     for r in rows[:limit]:
         mark = "" if r["active"] else " <i>(строка больше не в документе)</i>"
         out.append(
