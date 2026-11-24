@@ -109,3 +109,24 @@ async def test_renamed_stadiu_list_and_new_page(db):
     r = await mon.run_cycle()
     assert r.new_orders == [] and r.new_mentions == []
     assert (await svc.year_progress("500/RD/2022")).in_orders == 1
+
+
+async def test_interrupted_bootstrap_stays_silent(db):
+    files = {"https://anc/s/a.pdf": make_pdf(["1/RD/2022"]), "https://anc/s/b.pdf": make_pdf(["2/RD/2022"])}
+    fetcher = FakeFetcher({STADIU: '<a href="/s/a.pdf">a</a><a href="/s/b.pdf">b</a>'}, files)
+    mon = AncMonitor(db, fetcher, (STADIU,), download_delay=0)
+
+    real = fetcher.get_bytes
+    async def crash_on_b(url):
+        if url.endswith("b.pdf"):
+            raise KeyboardInterrupt  # бот остановили посреди первой загрузки
+        return await real(url)
+    fetcher.get_bytes = crash_on_b
+    with pytest.raises(KeyboardInterrupt):
+        await mon.run_cycle()
+
+    fetcher.get_bytes = real
+    r = await mon.run_cycle()
+    assert r.bootstrap and r.new_mentions == []
+    r = await mon.run_cycle()
+    assert not r.bootstrap

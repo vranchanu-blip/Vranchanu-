@@ -56,6 +56,9 @@ Wants=network-online.target
 [Service]
 User=$USER_NAME
 WorkingDirectory=$APP
+# При каждом перезапуске подтягиваем свежий код (ошибки сети не мешают старту).
+ExecStartPre=-/usr/bin/git -C $APP pull --ff-only
+ExecStartPre=-$APP/.venv/bin/pip install -q -r $APP/requirements.txt
 ExecStart=$APP/.venv/bin/python -m bot
 Restart=always
 RestartSec=10

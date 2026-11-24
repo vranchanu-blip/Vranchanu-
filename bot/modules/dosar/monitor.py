@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Protocol
@@ -106,10 +107,9 @@ class AncMonitor:
         result = CycleResult(started_at=utcnow())
         # Страницы, документы с которых уже есть в базе. Документы с «новой» страницы
         # (первый запуск или добавленная страница) — это архив: уведомлений по ним не шлём.
-        known_pages = {
-            r["source_page"]
-            for r in await self.db.fetchall("SELECT DISTINCT source_page FROM anc_documents")
-        }
+        # Страница считается «известной» только после полностью завершённой проверки:
+        # если первую загрузку архива прервали, она продолжится тоже без уведомлений.
+        known_pages = set(json.loads(await self.db.get_kv("anc_pages_done") or "[]"))
         result.bootstrap = not known_pages
 
         links: list[PdfLink] = []
@@ -139,6 +139,7 @@ class AncMonitor:
                 )
 
         await self._retire_removed_docs(ok_pages, seen)
+        await self.db.set_kv("anc_pages_done", json.dumps(sorted(known_pages | set(ok_pages))))
         return result
 
     async def _retire_removed_docs(self, ok_pages: list[str], current_urls: set[str]) -> None:
