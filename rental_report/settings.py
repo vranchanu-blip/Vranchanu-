@@ -72,12 +72,12 @@ def is_configured(cfg: dict) -> bool:
 def next_number(cfg: dict) -> int:
     p = state_path()
     if p.exists():
-        return int(json.loads(p.read_text()).get("next_number", cfg["saga"]["next_number"]))
+        return int(json.loads(p.read_text(encoding="utf-8")).get("next_number", cfg["saga"]["next_number"]))
     return int(cfg["saga"]["next_number"])
 
 
 def set_next_number(n: int) -> None:
     p = state_path()
-    state = json.loads(p.read_text()) if p.exists() else {}
+    state = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     state["next_number"] = int(n)
-    p.write_text(json.dumps(state, indent=2, ensure_ascii=False))
+    p.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")

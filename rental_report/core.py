@@ -128,7 +128,7 @@ def generate(cfg: dict, files: list[Path], month: str, out_dir: Path, state_path
 
     # Сквозная нумерация документов SAGA (повторный запуск месяца не сдвигает номера)
     state_path = Path(state_path)
-    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
     months = state.setdefault("months", {})
     first_no = months.get(month, {}).get("first_number") or state.get(
         "next_number", cfg.get("saga", {}).get("next_number", 1))
@@ -143,7 +143,7 @@ def generate(cfg: dict, files: list[Path], month: str, out_dir: Path, state_path
         months[month] = {"first_number": first_no, "last_number": next_no - 1}
         state["next_number"] = max(state.get("next_number", 1), next_no)
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False))
+        state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if cfg.get("archive_inputs", True) and files:
         arch = out_dir / "surse"

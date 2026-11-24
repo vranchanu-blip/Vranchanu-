@@ -59,9 +59,9 @@ def test_bnr_weekend_fallback():
 
 def test_full_run(tmp_path, monkeypatch):
     shutil.copytree(DATA, tmp_path / "inbox", ignore=shutil.ignore_patterns("*.xml"))
-    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text())
+    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text(encoding="utf-8"))
     cfg["saga"]["next_number"] = 100
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True))
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     monkeypatch.setattr(BnrRates, "_load_year", lambda self, y: self._years.add(y))
     args = ["--month", "2026-10", "--config", str(tmp_path / "config.yaml"),
             "--rates-file", str(DATA / "bnr_sample.xml")]
@@ -76,7 +76,7 @@ def test_full_run(tmp_path, monkeypatch):
     root = ET.parse(out / "SAGA_import_2026-10.xml").getroot()
     nums = [f.findtext("Antet/FacturaNumar") for f in root.findall("Factura")]
     assert nums == [f"CAZ{n}" for n in range(100, 105)]
-    assert json.loads((tmp_path / "state.json").read_text())["next_number"] == 105
+    assert json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["next_number"] == 105
 
     # повторный запуск того же месяца не сдвигает нумерацию
     assert main(args) == 0
@@ -108,9 +108,9 @@ def test_booking_pdf_text():
 def test_platform_basis_airbnb_by_payout(tmp_path, monkeypatch):
     (tmp_path / "inbox").mkdir()
     shutil.copy(DATA / "airbnb_ru_sample.csv", tmp_path / "inbox")
-    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text())
+    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text(encoding="utf-8"))
     cfg["expect_booking"] = False
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True))
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     assert main(["--month", "2026-09", "--config", str(tmp_path / "config.yaml")]) == 0
     root = ET.parse(tmp_path / "reports" / "2026-09" / "SAGA_import_2026-09.xml").getroot()
     names = [f.findtext("Antet/ClientNume") for f in root.findall("Factura")]
