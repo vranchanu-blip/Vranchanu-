@@ -4,6 +4,18 @@ from decimal import Decimal
 from typing import Optional
 
 
+def status_ro(status: str) -> str:
+    """Статус брони на румынском (Booking/Airbnb пишут его на языке интерфейса)."""
+    s = (status or "").strip().lower()
+    if any(w in s for w in ("cancel", "anulat", "отмен")):
+        return "Anulată (cu taxă)"
+    if any(w in s for w in ("no_show", "no-show", "no show", "neprezent", "не заех", "незаезд", "не приех")):
+        return "Neprezentare"
+    if any(w in s for w in ("adjust", "ajust", "корректир", "resolution")):
+        return "Ajustare"
+    return "Finalizată"
+
+
 @dataclass
 class Reservation:
     platform: str                 # "Airbnb" / "Booking"

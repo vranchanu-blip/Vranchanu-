@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .models import Reservation
+from .models import Reservation, status_ro
 
 HEAD = ["Nr.", "Platformă", "Cod rezervare", "Client", "Țara", "Unitate", "Check-in", "Check-out",
         "Nopți", "Stare", "Monedă", "Încasat brut", "Comision platformă", "Net de primit",
@@ -28,7 +28,7 @@ def _sheet(ws, rows: list[Reservation]):
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     for i, r in enumerate(rows, 1):
         ws.append([i, r.platform, r.code, r.guest, r.country, r.listing, r.checkin, r.checkout,
-                   r.nights, r.status, r.currency, float(r.gross), float(r.commission), float(r.net),
+                   r.nights, status_ro(r.status), r.currency, float(r.gross), float(r.commission), float(r.net),
                    float(r.rate) if r.rate else 1.0, r.rate_date, float(r.gross_ron),
                    float(r.commission_ron), float(r.net_ron)])
     n = len(rows) + 1
@@ -46,6 +46,9 @@ def _sheet(ws, rows: list[Reservation]):
                 c.number_format = MONEY
             elif c.column == 15:
                 c.number_format = "0.0000"
+    for col in (3, 5, 6):  # Cod rezervare / Țara / Unitate — скрыть, если данных нет
+        if not any(ws.cell(row=i, column=col).value for i in range(2, n + 1)):
+            ws.column_dimensions[get_column_letter(col)].hidden = True
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(HEAD))}{n}"
 

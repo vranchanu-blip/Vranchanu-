@@ -116,3 +116,11 @@ def test_platform_basis_airbnb_by_payout(tmp_path, monkeypatch):
     names = [f.findtext("Antet/ClientNume") for f in root.findall("Factura")]
     assert "Test Guest One" in names and len(names) == 3   # выезд 02.10, но выплата 30.09
     assert root.find("Factura/Antet/ClientCIF").text == "0000000000000"
+
+
+def test_status_in_romanian():
+    from rental_report.models import status_ro
+    assert status_ro("Гость прожил") == "Finalizată"
+    assert status_ro("ok") == "Finalizată"
+    assert status_ro("cancelled_by_guest") == "Anulată (cu taxă)"
+    assert status_ro("no_show") == "Neprezentare"
