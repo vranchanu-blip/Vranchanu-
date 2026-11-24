@@ -28,8 +28,9 @@ jobs:
       - name: Run tests
         run: python -m pytest -q tests
 
-      - name: Build RaportCazare.exe
-        run: pyinstaller --noconfirm --onefile --windowed --name RaportCazare --collect-submodules rental_report app.py
+      # --onedir (папка, а не один exe): антивирусы гораздо реже ложно блокируют такую сборку
+      - name: Build RaportCazare (folder)
+        run: pyinstaller --noconfirm --onedir --windowed --noupx --name RaportCazare --collect-submodules rental_report app.py
 
       - name: Smoke test the exe on sample files
         shell: pwsh
@@ -38,7 +39,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$d\inbox" | Out-Null
           Copy-Item config.example.yaml "$d\config.yaml"
           Copy-Item tests\data\*.csv "$d\inbox\"
-          $p = Start-Process -FilePath dist\RaportCazare.exe -PassThru -ArgumentList @(
+          $p = Start-Process -FilePath dist\RaportCazare\RaportCazare.exe -PassThru -ArgumentList @(
             "--batch", "--month", "2026-10", "--config", "`"$d\config.yaml`"",
             "--rates-file", "`"$PWD\tests\data\bnr_sample.xml`"")
           if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Write-Host "TIMEOUT" }
@@ -48,19 +49,44 @@ jobs:
           if (-not (Test-Path "$d\reports\2026-10\Raport_cazare_2026-10.xlsx")) { throw "Excel report was not created" }
           if (-not (Test-Path "$d\reports\2026-10\SAGA_import_2026-10.xml")) { throw "SAGA XML was not created" }
 
+      - name: Build installer RaportCazare-Setup.exe
+        shell: pwsh
+        env:
+          APP_VERSION: 0.4.${{ github.run_number }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          Compress-Archive -Path dist\RaportCazare -DestinationPath dist\RaportCazare-portable.zip
+          Get-ChildItem dist
+
+      - name: Smoke test the installer (silent install)
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\RaportCazare-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\RaportCazare\RaportCazare.exe"
+          if (-not (Test-Path $exe)) { throw "Installer did not install RaportCazare.exe" }
+          Write-Host "Installed: $exe"
+
       - uses: actions/upload-artifact@v4
         with:
           name: RaportCazare
-          path: dist/RaportCazare.exe
+          path: |
+            dist/RaportCazare-Setup.exe
+            dist/RaportCazare-portable.zip
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.${{ github.run_number }}
+          tag_name: v0.4.${{ github.run_number }}
           name: RaportCazare ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: "true"
-          files: dist/RaportCazare.exe
+          files: |
+            dist/RaportCazare-Setup.exe
+            dist/RaportCazare-portable.zip
           body: |
-            Скачайте **RaportCazare.exe** ниже (раздел Assets) и запустите двойным щелчком.
-            Если Windows покажет «Windows защитила компьютер» — нажмите «Подробнее» → «Выполнить в любом случае».
+            Скачайте **RaportCazare-Setup.exe** (раздел Assets), запустите и нажмите «Установить».
+            На рабочем столе появится ярлык «Raport cazare».
+            Если Windows покажет «Windows защитила компьютер» — «Подробнее» → «Выполнить в любом случае».

@@ -2,8 +2,8 @@
 
 ## Самый простой способ: программа RaportCazare.exe (Windows)
 
-1. Скачайте **RaportCazare.exe**:
-   https://github.com/vranchanu-blip/Vranchanu-/releases/latest/download/RaportCazare.exe
+1. Скачайте установщик **RaportCazare-Setup.exe** и установите программу:
+   https://github.com/vranchanu-blip/Vranchanu-/releases/latest/download/RaportCazare-Setup.exe
    (нужно быть залогиненным в GitHub). Ничего устанавливать не нужно.
 2. Запустите двойным щелчком. Если появится синее окно «Windows защитила компьютер»,
    нажмите **«Подробнее» → «Выполнить в любом случае»** (так бывает с любой новой программой).
