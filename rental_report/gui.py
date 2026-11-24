@@ -57,23 +57,23 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(f, text="Следующий номер документа").grid(row=r, column=0, sticky="w", pady=3, padx=(0, 10))
         self.number = tk.StringVar(value=str(settings.next_number(cfg)))
         ttk.Entry(f, textvariable=self.number, width=12).grid(row=r, column=1, sticky="w", pady=3)
-        ttk.Label(f, text="последний номер в SAGA + 1, например 420", foreground="#777").grid(
-            row=r, column=1, sticky="e")
-        ttk.Label(f, text="TVA (НДС), %").grid(row=r + 1, column=0, sticky="w", pady=3)
+        ttk.Label(f, text="только число: последний номер в SAGA + 1 (VA419 → 420)", foreground="#777").grid(
+            row=r + 1, column=1, sticky="w")
+        ttk.Label(f, text="TVA (НДС), %").grid(row=r + 2, column=0, sticky="w", pady=3)
         self.vat = tk.StringVar(value=str(cfg.get("vat_rate", 0)))
         ttk.Combobox(f, textvariable=self.vat, values=["0", "11", "21"], width=10).grid(
-            row=r + 1, column=1, sticky="w", pady=3)
+            row=r + 2, column=1, sticky="w", pady=3)
         ttk.Label(f, text="0 — если фирма не плательщик TVA", foreground="#777").grid(
-            row=r + 2, column=1, sticky="w")
+            row=r + 3, column=1, sticky="w")
         b = ttk.Frame(f)
-        b.grid(row=r + 3, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        b.grid(row=r + 4, column=0, columnspan=2, sticky="e", pady=(14, 0))
         ttk.Button(b, text="Отмена", command=self.destroy).pack(side="right", padx=(6, 0))
         ttk.Button(b, text="Сохранить", command=self.on_save).pack(side="right")
         self.grab_set()
 
     def on_save(self):
         try:
-            number = int(self.number.get().strip())
+            number = int("".join(ch for ch in self.number.get() if ch.isdigit()))
             vat = float(self.vat.get().strip().replace(",", ".") or 0)
         except ValueError:
             messagebox.showerror("Ошибка", "Номер документа и TVA должны быть числами.", parent=self)
