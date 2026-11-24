@@ -1,0 +1,60 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller pytest
+
+      - name: Run tests
+        run: python -m pytest -q tests
+
+      - name: Build RaportCazare.exe
+        run: pyinstaller --noconfirm --onefile --windowed --name RaportCazare --collect-submodules rental_report app.py
+
+      - name: Smoke test the exe on sample files
+        shell: pwsh
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP "smoke"
+          New-Item -ItemType Directory -Force -Path "$d\inbox" | Out-Null
+          Copy-Item config.example.yaml "$d\config.yaml"
+          Copy-Item tests\data\*.csv "$d\inbox\"
+          $p = Start-Process -FilePath dist\RaportCazare.exe -Wait -PassThru -ArgumentList @(
+            "--batch", "--month", "2026-10", "--config", "`"$d\config.yaml`"",
+            "--rates-file", "`"$PWD\tests\data\bnr_sample.xml`"")
+          Write-Host "exit code: $($p.ExitCode)"
+          Get-ChildItem -Recurse "$d\reports"
+          if (-not (Test-Path "$d\reports\2026-10\Raport_cazare_2026-10.xlsx")) { throw "Excel report was not created" }
+          if (-not (Test-Path "$d\reports\2026-10\SAGA_import_2026-10.xml")) { throw "SAGA XML was not created" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RaportCazare
+          path: dist/RaportCazare.exe
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.3.${{ github.run_number }}
+          name: RaportCazare ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: "true"
+          files: dist/RaportCazare.exe
+          body: |
+            Скачайте **RaportCazare.exe** ниже (раздел Assets) и запустите двойным щелчком.
+            Если Windows покажет «Windows защитила компьютер» — нажмите «Подробнее» → «Выполнить в любом случае».
