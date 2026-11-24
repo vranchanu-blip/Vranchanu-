@@ -14,6 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -37,11 +38,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$d\inbox" | Out-Null
           Copy-Item config.example.yaml "$d\config.yaml"
           Copy-Item tests\data\*.csv "$d\inbox\"
-          $p = Start-Process -FilePath dist\RaportCazare.exe -Wait -PassThru -ArgumentList @(
+          $p = Start-Process -FilePath dist\RaportCazare.exe -PassThru -ArgumentList @(
             "--batch", "--month", "2026-10", "--config", "`"$d\config.yaml`"",
             "--rates-file", "`"$PWD\tests\data\bnr_sample.xml`"")
+          if (-not $p.WaitForExit(180000)) { Stop-Process -Id $p.Id -Force; Write-Host "TIMEOUT" }
           Write-Host "exit code: $($p.ExitCode)"
-          Get-ChildItem -Recurse "$d\reports"
+          if (Test-Path "$d\batch.log") { Get-Content "$d\batch.log" -Encoding utf8 }
+          Get-ChildItem -Recurse "$d\reports" -ErrorAction SilentlyContinue
           if (-not (Test-Path "$d\reports\2026-10\Raport_cazare_2026-10.xlsx")) { throw "Excel report was not created" }
           if (-not (Test-Path "$d\reports\2026-10\SAGA_import_2026-10.xml")) { throw "SAGA XML was not created" }
 

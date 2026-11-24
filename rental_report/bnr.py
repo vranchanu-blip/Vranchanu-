@@ -33,6 +33,7 @@ class BnrRates:
         self.mode = mode
         self._data: dict[date, dict[str, Decimal]] = {}
         self._years: set[int] = set()
+        self.offline = bool(offline_file)   # курсы из файла — интернет не нужен
         if offline_file:
             self._data.update(parse_xml(Path(offline_file).read_bytes()))
 
@@ -43,11 +44,11 @@ class BnrRates:
         cache = self.cache_dir / f"nbrfxrates{year}.xml"
         fresh_needed = year >= date.today().year
         content = None
-        if fresh_needed or not cache.exists():
+        if not self.offline and (fresh_needed or not cache.exists()):
             try:
                 req = urllib.request.Request(YEAR_URL.format(year=year),
                                              headers={"User-Agent": "rental-report/0.1"})
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=15) as resp:
                     content = resp.read()
                 cache.write_bytes(content)
             except OSError:
