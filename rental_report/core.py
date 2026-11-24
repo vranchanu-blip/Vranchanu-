@@ -138,7 +138,7 @@ def generate(cfg: dict, files: list[Path], month: str, out_dir: Path, state_path
     company = cfg.get("company", {}).get("name", "")
     res.outputs.append(excel_report.write(rows, out_dir / f"Raport_cazare_{month}.xlsx", res.title, company))
     if cfg.get("saga", {}).get("enabled", True) and rows:
-        xml, next_no = saga_xml.write(rows, out_dir / f"SAGA_import_{month}.xml", cfg, end)
+        xml, next_no = saga_xml.write(rows, out_dir / saga_xml.file_name(cfg, month), cfg, end)
         res.outputs.append(xml)
         months[month] = {"first_number": first_no, "last_number": next_no - 1}
         state["next_number"] = max(state.get("next_number", 1), next_no)

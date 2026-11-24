@@ -73,15 +73,15 @@ def test_full_run(tmp_path, monkeypatch):
     # выезд в октябре: 2 Airbnb + 3 Booking (Ivanova выехала 01.10), HMNOV00001 — в ноябре
     assert sorted(codes) == sorted(["HMABC12345", "HMXYZ67890", "4123456789", "4123456790", "4123456792"])
 
-    root = ET.parse(out / "SAGA_import_2026-10.xml").getroot()
+    root = ET.parse(out / "F_12345678_2026-10.xml").getroot()
     nums = [f.findtext("Antet/FacturaNumar") for f in root.findall("Factura")]
-    assert nums == [f"CAZ{n}" for n in range(100, 105)]
+    assert nums == [f"VA{n}" for n in range(100, 105)]
     assert json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))["next_number"] == 105
 
     # повторный запуск того же месяца не сдвигает нумерацию
     assert main(args) == 0
-    root = ET.parse(out / "SAGA_import_2026-10.xml").getroot()
-    assert root.find("Factura/Antet/FacturaNumar").text == "CAZ100"
+    root = ET.parse(out / "F_12345678_2026-10.xml").getroot()
+    assert root.find("Factura/Antet/FacturaNumar").text == "VA100"
 
 
 def test_airbnb_new_russian_format():
@@ -112,9 +112,9 @@ def test_platform_basis_airbnb_by_payout(tmp_path, monkeypatch):
     cfg["expect_booking"] = False
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     assert main(["--month", "2026-09", "--config", str(tmp_path / "config.yaml")]) == 0
-    root = ET.parse(tmp_path / "reports" / "2026-09" / "SAGA_import_2026-09.xml").getroot()
+    root = ET.parse(tmp_path / "reports" / "2026-09" / "F_12345678_2026-09.xml").getroot()
     names = [f.findtext("Antet/ClientNume") for f in root.findall("Factura")]
-    assert "Test Guest One" in names and len(names) == 3   # выезд 02.10, но выплата 30.09
+    assert "TEST GUEST ONE" in names and len(names) == 3   # выезд 02.10, но выплата 30.09
     assert root.find("Factura/Antet/ClientCIF").text == "0000000000000"
 
 
@@ -124,3 +124,19 @@ def test_status_in_romanian():
     assert status_ro("ok") == "Finalizată"
     assert status_ro("cancelled_by_guest") == "Anulată (cu taxă)"
     assert status_ro("no_show") == "Neprezentare"
+
+
+def test_saga_lines_like_manual_entry(tmp_path):
+    (tmp_path / "inbox").mkdir()
+    shutil.copy(DATA / "airbnb_ru_sample.csv", tmp_path / "inbox")
+    cfg = yaml.safe_load((Path(__file__).parents[1] / "config.example.yaml").read_text(encoding="utf-8"))
+    cfg["expect_booking"] = False
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    main(["--month", "2026-09", "--config", str(tmp_path / "config.yaml")])
+    root = ET.parse(tmp_path / "reports" / "2026-09" / "F_12345678_2026-09.xml").getroot()
+    f = root.find("Factura")
+    assert f.findtext("Antet/FacturaData") == "30.09.2026"
+    assert f.findtext("Antet/FurnizorCIF") == "RO12345678"
+    ln = f.find("Detalii/Continut/Linie")
+    assert ln.findtext("Descriere") == "CAZARE 1 NOAPTE AIRBNB"
+    assert (ln.findtext("UM"), ln.findtext("Cantitate"), ln.findtext("Pret")) == ("BUC", "1", "310.0000")

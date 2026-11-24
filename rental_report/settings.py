@@ -16,8 +16,9 @@ DEFAULTS = {
     "include_cancelled_with_fee": True,
     "archive_inputs": True,
     "vat_rate": 0,
-    "saga": {"enabled": True, "mode": "per_reservation", "series": "CAZ", "next_number": 1,
-             "article_code": "CAZARE", "unit": "noapte", "client_cif": "0000000000000"},
+    "saga": {"enabled": True, "mode": "per_reservation", "series": "VA", "next_number": 1,
+             "article_code": "CAZARE", "unit": "BUC", "client_cif": "0000000000000",
+             "invoice_date": "month_end", "quantity": "one", "uppercase_names": True},
 }
 
 

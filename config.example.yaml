@@ -32,10 +32,14 @@ vat_rate: 0
 saga:
   enabled: true
   mode: per_reservation      # per_reservation — документ на каждого клиента; per_platform — один на платформу за месяц
-  series: "CAZ"              # серия документов
+  series: "VA"               # серия документов (как в SAGA)
   next_number: 1             # первый номер (дальше программа считает сама в state.json)
   article_code: "CAZARE"
-  unit: "noapte"
+  unit: "BUC"
+  invoice_date: month_end    # month_end — все документы последним днём месяца; checkout — датой выезда
+  quantity: one              # one — количество 1, цена = сумма; nights — количество = ночи
+  line_template: "CAZARE {nopti} {platforma}"   # → «CAZARE 1 NOAPTE AIRBNB», «CAZARE 3 NOPTI BOOKING»
+  uppercase_names: true
   client_cif: "0000000000000"  # CNP клиента-физлица неизвестен → 13 нулей (так принимает e-Factura/SPV)
 
 email:                       # необязательно: отправка бухгалтеру

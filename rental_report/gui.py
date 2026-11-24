@@ -32,10 +32,10 @@ def month_choices(today: date, n: int = 14) -> list[str]:
 
 
 class SettingsDialog(tk.Toplevel):
-    FIELDS = [("Название фирмы (SRL)", ("company", "name")), ("CIF", ("company", "cif")),
+    FIELDS = [("Название фирмы (SRL)", ("company", "name")), ("CIF (точно как в SAGA)", ("company", "cif")),
               ("Nr. Reg. Com.", ("company", "reg_com")), ("Адрес", ("company", "address")),
               ("Банк", ("company", "bank")), ("IBAN", ("company", "iban")),
-              ("Серия документов", ("saga", "series"))]
+              ("Серия документов (как в SAGA)", ("saga", "series"))]
 
     def __init__(self, master, cfg: dict):
         super().__init__(master)
@@ -57,6 +57,8 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(f, text="Следующий номер документа").grid(row=r, column=0, sticky="w", pady=3, padx=(0, 10))
         self.number = tk.StringVar(value=str(settings.next_number(cfg)))
         ttk.Entry(f, textvariable=self.number, width=12).grid(row=r, column=1, sticky="w", pady=3)
+        ttk.Label(f, text="последний номер в SAGA + 1, например 420", foreground="#777").grid(
+            row=r, column=1, sticky="e")
         ttk.Label(f, text="TVA (НДС), %").grid(row=r + 1, column=0, sticky="w", pady=3)
         self.vat = tk.StringVar(value=str(cfg.get("vat_rate", 0)))
         ttk.Combobox(f, textvariable=self.vat, values=["0", "11", "21"], width=10).grid(

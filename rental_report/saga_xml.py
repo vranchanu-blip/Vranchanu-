@@ -64,7 +64,7 @@ def _invoice(root, cfg: dict, number: str, inv_date: date, client: str, client_i
         _sub(ln, "CodArticolFurnizor", cfg.get("saga", {}).get("article_code", "CAZARE"))
         _sub(ln, "CodArticolClient", "")
         _sub(ln, "InformatiiSuplimentare", "")
-        _sub(ln, "UM", cfg.get("saga", {}).get("unit", "noapte"))
+        _sub(ln, "UM", cfg.get("saga", {}).get("unit", "BUC"))
         _sub(ln, "Cantitate", qty)
         _sub(ln, "Pret", price)
         _sub(ln, "Valoare", _q(base))
@@ -78,12 +78,25 @@ def _invoice(root, cfg: dict, number: str, inv_date: date, client: str, client_i
     _sub(s, "Total", _q(tot_val + tot_vat))
 
 
+def _nopti(n: int) -> str:
+    return f"{n} NOAPTE" if n == 1 else f"{n} NOPTI"
+
+
+def file_name(cfg: dict, month: str) -> str:
+    """SAGA ожидает имя вида F_<cod fiscal>_<...>.xml."""
+    cif = str(cfg.get("company", {}).get("cif", "")).upper().replace("RO", "").strip() or "0"
+    return f"F_{cif}_{month}.xml"
+
+
 def write(rows: list[Reservation], path: Path, cfg: dict, period_end: date) -> tuple[Path, int]:
     saga = cfg.get("saga", {})
     mode = saga.get("mode", "per_reservation")
     series = saga.get("series", "CAZ")
     number = int(saga.get("next_number", 1))
     vat_rate = Decimal(str(cfg.get("vat_rate", 0)))
+    month_end_date = saga.get("invoice_date", "month_end") == "month_end"
+    qty_nights = saga.get("quantity", "one") == "nights"
+    upper = saga.get("uppercase_names", True)
     root = ET.Element("Facturi")
     count = 0
     if mode == "per_platform":
@@ -91,20 +104,22 @@ def write(rows: list[Reservation], path: Path, cfg: dict, period_end: date) -> t
         for r in rows:
             groups[r.platform].append(r)
         for platform, items in sorted(groups.items()):
-            lines = [(f"Cazare {r.guest} {r.checkin:%d.%m}-{r.checkout:%d.%m} ({r.code})",
-                      Decimal(r.nights or 1), r.gross_ron) for r in items]
+            lines = [(f"CAZARE {r.guest} {r.checkin:%d.%m}-{r.checkout:%d.%m} {platform.upper()}",
+                      Decimal(r.nights or 1) if qty_nights else Decimal(1), r.gross_ron) for r in items]
             _invoice(root, cfg, f"{series}{number}", period_end,
-                     f"Clienți {platform} (persoane fizice)", f"Raport lunar {period_end:%m.%Y}",
-                     lines, vat_rate)
+                     f"CLIENTI {platform.upper()}", f"Raport lunar {period_end:%m.%Y}", lines, vat_rate)
             number += 1
             count += 1
     else:
         for r in sorted(rows, key=lambda x: (x.checkout or period_end, x.platform, x.code)):
-            d = min(r.checkout or period_end, period_end)
-            descr = f"Servicii cazare {r.checkin:%d.%m.%Y}-{r.checkout:%d.%m.%Y}, {r.listing}".strip(", ")
-            _invoice(root, cfg, f"{series}{number}", d, r.guest or "Persoană fizică",
-                     f"{r.platform} {r.code}".strip() + (f", {r.country}" if r.country else ""),
-                     [(descr, Decimal(r.nights or 1), r.gross_ron)], vat_rate)
+            d = period_end if month_end_date else min(r.checkout or period_end, period_end)
+            descr = saga.get("line_template", "CAZARE {nopti} {platforma}").format(
+                nopti=_nopti(r.nights or 1), platforma=r.platform.upper(),
+                checkin=f"{r.checkin:%d.%m.%Y}", checkout=f"{r.checkout:%d.%m.%Y}")
+            guest = r.guest or "PERSOANA FIZICA"
+            _invoice(root, cfg, f"{series}{number}", d, guest.upper() if upper else guest,
+                     f"{r.platform} {r.code}".strip() + f", {r.checkin:%d.%m}-{r.checkout:%d.%m.%Y}",
+                     [(descr, Decimal(r.nights or 1) if qty_nights else Decimal(1), r.gross_ron)], vat_rate)
             number += 1
             count += 1
     ET.indent(root)
