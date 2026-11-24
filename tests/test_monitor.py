@@ -1,0 +1,82 @@
+import pytest
+
+from bot.db import Database
+from bot.modules.dosar.monitor import AncMonitor
+from bot.modules.dosar.service import DosarService
+from tests.helpers import FakeFetcher, make_pdf
+
+STADIU = "https://anc/stadiu-dosar/"
+ORDINE = "https://anc/ordine-articolul-11/"
+
+
+@pytest.fixture
+async def db():
+    d = Database(":memory:")
+    await d.connect()
+    yield d
+    await d.close()
+
+
+def pages(orders: list[str]) -> dict[str, str]:
+    return {
+        STADIU: '<a href="/s/art11-2021.pdf">Articolul 11 - 2021</a>',
+        ORDINE: "".join(f'<a href="/o/{o}.pdf">Ordin {o}</a>' for o in orders),
+    }
+
+
+async def test_cycle_bootstrap_then_changes(db):
+    files = {
+        "https://anc/s/art11-2021.pdf": make_pdf(["100/RD/2021 01.02.2021", "200/RD/2021 02.02.2021"]),
+        "https://anc/o/1.pdf": make_pdf(["1. A B 50/RD/2021", "2. C D 60/RD/2021"]),
+    }
+    fetcher = FakeFetcher(pages(["1"]), files)
+    got = []
+
+    async def on_result(r):
+        got.append(r)
+
+    mon = AncMonitor(db, fetcher, (STADIU, ORDINE), on_result=on_result, download_delay=0)
+
+    r1 = await mon.run_cycle()
+    assert r1.bootstrap and r1.pages_ok == 2 and r1.pdf_changed == 2
+    assert r1.new_mentions == [] and r1.new_orders == []  # без спама при первой загрузке
+
+    # Ничего не поменялось: приказ повторно не скачивается, stadiu скачивается, но без изменений
+    fetcher.downloads.clear()
+    r2 = await mon.run_cycle()
+    assert fetcher.downloads == ["https://anc/s/art11-2021.pdf"]
+    assert r2.new_mentions == [] and not r2.bootstrap
+
+    # Обновился stadiu (у 200 появилось решение) и вышел новый приказ с номером 100
+    files["https://anc/s/art11-2021.pdf"] = make_pdf(["100/RD/2021 01.02.2021", "200/RD/2021 02.02.2021 ordin 9/P"])
+    files["https://anc/o/2.pdf"] = make_pdf(["1. X Y 100/RD/2021"])
+    fetcher.pages = pages(["2", "1"])
+    r3 = await mon.run_cycle()
+    assert [o.url for o in r3.new_orders] == ["https://anc/o/2.pdf"]
+    new = {(m.number, m.kind) for m in r3.new_mentions}
+    assert new == {("200/RD/2021", "stadiu"), ("100/RD/2021", "ordin")}
+
+    svc = DosarService(db)
+    hist = await svc.mentions("200/RD/2021")
+    assert [h["active"] for h in hist] == [1, 0]  # старая строка помечена неактивной
+    prog = await svc.year_progress("100/RD/2021")
+    assert prog.in_orders == 3 and prog.max_seq_in_orders == 100 and prog.position_hint == 2
+    assert len(got) == 3
+
+
+async def test_site_down_does_not_bootstrap(db):
+    mon = AncMonitor(db, FakeFetcher({}, {}), (STADIU,), download_delay=0)
+    r = await mon.run_cycle()
+    assert r.pages_ok == 0 and r.errors
+    assert await db.get_kv("anc_bootstrapped") is None
+
+
+async def test_dosar_service_limits(db):
+    await db.upsert_user(1, "u", "U")
+    svc = DosarService(db)
+    assert await svc.add(1, "1/RD/2020", None)
+    assert await svc.add(1, "1/RD/2020", "dup") is None
+    for i in range(2, 11):
+        assert await svc.add(1, f"{i}/RD/2020", None)
+    assert await svc.add(1, "99/RD/2020", None) is None
+    assert await svc.toggle_orders(1) is False
