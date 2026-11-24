@@ -47,7 +47,7 @@ jobs:
           if (Test-Path "$d\batch.log") { Get-Content "$d\batch.log" -Encoding utf8 }
           Get-ChildItem -Recurse "$d\reports" -ErrorAction SilentlyContinue
           if (-not (Test-Path "$d\reports\2026-10\Raport_cazare_2026-10.xlsx")) { throw "Excel report was not created" }
-          if (-not (Test-Path "$d\reports\2026-10\SAGA_import_2026-10.xml")) { throw "SAGA XML was not created" }
+          if (-not (Test-Path "$d\reports\2026-10\F_12345678_2026-10.xml")) { throw "SAGA XML was not created" }
 
       - name: Build installer RaportCazare-Setup.exe
         shell: pwsh
