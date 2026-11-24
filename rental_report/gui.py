@@ -56,7 +56,8 @@ class SettingsDialog(tk.Toplevel):
         r = len(self.FIELDS) + 1
         ttk.Label(f, text="Следующий номер документа").grid(row=r, column=0, sticky="w", pady=3, padx=(0, 10))
         self.number = tk.StringVar(value=str(settings.next_number(cfg)))
-        ttk.Entry(f, textvariable=self.number, width=12).grid(row=r, column=1, sticky="w", pady=3)
+        ttk.Entry(f, textvariable=self.number, width=16, font=("Segoe UI", 11, "bold")).grid(
+            row=r, column=1, sticky="w", pady=3)
         ttk.Label(f, text="только число: последний номер в SAGA + 1 (VA419 → 420)", foreground="#777").grid(
             row=r + 1, column=1, sticky="w")
         ttk.Label(f, text="TVA (НДС), %").grid(row=r + 2, column=0, sticky="w", pady=3)
@@ -131,6 +132,10 @@ class App(tk.Tk):
         style.configure("Big.TButton", font=("Segoe UI", 12, "bold"), padding=10)
         ttk.Button(f, text="Сделать отчёт", style="Big.TButton", command=self.run).pack(fill="x")
 
+        self.next_doc = ttk.Label(f, font=("Segoe UI", 10, "bold"), foreground="#1a5fb4")
+        self.next_doc.pack(anchor="w", pady=(10, 0))
+        self.refresh_next_doc()
+
         bottom = ttk.Frame(f)
         bottom.pack(fill="x", pady=(14, 0))
         ttk.Button(bottom, text="⚙ Данные фирмы…", command=self.edit_settings).pack(side="left")
@@ -139,6 +144,11 @@ class App(tk.Tk):
 
         if not settings.is_configured(self.cfg):
             self.after(300, self.first_run)
+
+    def refresh_next_doc(self):
+        series = self.cfg.get("saga", {}).get("series", "")
+        self.next_doc.config(text=f"Следующий документ для SAGA: {series}{settings.next_number(self.cfg)}"
+                                  "   (изменить — «Данные фирмы»)")
 
     def first_run(self):
         messagebox.showinfo("Добро пожаловать",
@@ -149,6 +159,7 @@ class App(tk.Tk):
         d = SettingsDialog(self, settings.load())
         self.wait_window(d)
         self.cfg = settings.load()
+        self.refresh_next_doc()
 
     def add_files(self):
         paths = filedialog.askopenfilenames(
@@ -193,6 +204,7 @@ class App(tk.Tk):
         if res.warnings or res.notes:
             text += "\n\nОбратите внимание:\n" + "\n".join(f"• {w}" for w in res.warnings + res.notes)
         text += f"\n\nФайлы сохранены в папку:\n{out_dir}"
+        self.refresh_next_doc()
         (messagebox.showwarning if res.warnings else messagebox.showinfo)("Отчёт готов", text)
         open_folder(out_dir)
 
