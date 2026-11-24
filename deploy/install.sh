@@ -11,6 +11,13 @@ APP=/opt/bot
 USER_NAME=bot
 
 export DEBIAN_FRONTEND=noninteractive
+
+# На маленьких серверах (1 GB RAM) добавляем 2 GB подкачки.
+if [ ! -f /swapfile ] && [ "$(awk '/MemTotal/ {print $2}' /proc/meminfo)" -lt 2000000 ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 apt-get update -y
 apt-get install -y git python3 python3-venv
 
