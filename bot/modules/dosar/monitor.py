@@ -105,6 +105,8 @@ class AncMonitor:
 
     async def _cycle(self) -> CycleResult:
         result = CycleResult(started_at=utcnow())
+        if hasattr(self.fetcher, "relay"):
+            self.fetcher.relay = await self.db.get_kv("anc_relay") or None
         # Страницы, документы с которых уже есть в базе. Документы с «новой» страницы
         # (первый запуск или добавленная страница) — это архив: уведомлений по ним не шлём.
         # Страница считается «известной» только после полностью завершённой проверки:

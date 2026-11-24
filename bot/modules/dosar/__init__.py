@@ -327,6 +327,29 @@ def setup(ctx: AppContext) -> Module:
         errors = "\n".join(escape(e) for e in result.errors[:5])
         await message.answer(f"Готово: {result.summary()}" + (f"\n\n<code>{errors}</code>" if errors else ""))
 
+    @router.message(Command("relay"), F.from_user.id.in_(ctx.settings.admin_ids))
+    async def admin_relay(message: Message, command: CommandObject) -> None:
+        arg = (command.args or "").strip()
+        if not arg:
+            current = await ctx.db.get_kv("anc_relay") or "не задан"
+            await message.answer(
+                f"Посредник для сайта ANC: <code>{escape(current)}</code>\n\n"
+                "/relay https://адрес-посредника — включить\n/relay off — выключить"
+            )
+            return
+        if arg.lower() == "off":
+            await ctx.db.execute("DELETE FROM kv WHERE key = 'anc_relay'")
+            await message.answer("Посредник выключен, бот ходит на сайт ANC напрямую.")
+        elif arg.startswith("https://"):
+            await ctx.db.set_kv("anc_relay", arg)
+            await message.answer("Посредник сохранён. Запускаю проверку ANC…")
+        else:
+            await message.answer("Адрес должен начинаться с https://")
+            return
+        if not monitor.busy:
+            result = await monitor.run_cycle()
+            await message.answer(f"Готово: {result.summary()}")
+
     return Module(key="dosar", title="📁 Досар (гражданство RO)", router=router)
 
 

@@ -119,6 +119,8 @@ class AncClient:
     """HTTP-клиент к сайту ANC. Поддерживает прокси (сайт может не отвечать зарубежным IP)."""
 
     def __init__(self, proxy: str | None = None, timeout: float = 60.0):
+        # Адрес посредника (например, Cloudflare Worker): запросы идут на relay?url=<адрес ANC>.
+        self.relay: str | None = None
         self._client = httpx.AsyncClient(
             proxy=proxy,
             timeout=timeout,
@@ -126,13 +128,18 @@ class AncClient:
             headers={"User-Agent": USER_AGENT, "Accept-Language": "ro,en;q=0.8"},
         )
 
+    def _via_relay(self, url: str) -> str:
+        if not self.relay:
+            return url
+        return str(httpx.URL(self.relay).copy_merge_params({"url": url}))
+
     async def get_text(self, url: str) -> str:
-        resp = await self._client.get(url)
+        resp = await self._client.get(self._via_relay(url))
         resp.raise_for_status()
         return resp.text
 
     async def get_bytes(self, url: str) -> bytes:
-        resp = await self._client.get(url)
+        resp = await self._client.get(self._via_relay(url))
         resp.raise_for_status()
         return resp.content
 

@@ -1,4 +1,4 @@
-from bot.modules.dosar.anc import classify, extract_pdf_links, find_mentions, normalize_number, pdf_to_text
+from bot.modules.dosar.anc import AncClient, classify, extract_pdf_links, find_mentions, normalize_number, pdf_to_text
 from tests.helpers import make_pdf
 
 
@@ -44,3 +44,13 @@ def test_find_mentions_from_real_pdf():
     found = find_mentions(pdf_to_text(data))
     assert set(found) == {"12345/RD/2021", "12346/RD/2021", "777/RD/2019", "778/RD/2019"}
     assert any("ordin 555/P/2024" in line for line in found["12345/RD/2021"])
+
+
+async def test_relay_url():
+    c = AncClient()
+    assert c._via_relay("https://cetatenie.just.ro/a b.pdf") == "https://cetatenie.just.ro/a b.pdf"
+    c.relay = "https://anc.example.workers.dev/"
+    assert c._via_relay("https://cetatenie.just.ro/x.pdf?v=1") == (
+        "https://anc.example.workers.dev/?url=https%3A%2F%2Fcetatenie.just.ro%2Fx.pdf%3Fv%3D1"
+    )
+    await c.close()
