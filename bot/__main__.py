@@ -14,10 +14,10 @@ from bot.config import load_settings
 from bot.core.menu import setup_core
 from bot.core.registry import AppContext
 from bot.db import Database
-from bot.modules import portfolio, weather
+from bot.modules import portfolio, tasks, weather
 
 # Порядок = порядок кнопок в главном меню.
-MODULES = [weather, portfolio]
+MODULES = [weather, portfolio, tasks]
 
 
 class UserMiddleware(BaseMiddleware):
@@ -58,6 +58,8 @@ async def main() -> None:
         BotCommand(command="weather", description="Погода"),
         BotCommand(command="market", description="Рынки: индексы, серебро, нефть, биткоин"),
         BotCommand(command="ibkr", description="Мой портфель Interactive Brokers"),
+        BotCommand(command="todo", description="Дела: напоминания и списки"),
+        BotCommand(command="remind", description="Напоминание: /remind завтра в 9 позвонить"),
         BotCommand(command="help", description="Помощь"),
     ])
 

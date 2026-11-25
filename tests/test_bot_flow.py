@@ -73,6 +73,7 @@ async def env():
         await dp.feed_update(bot, upd)
         return [c for c in session.calls if isinstance(c, (EditMessageText, SendMessage))][-1]
 
+    session.ctx = ctx
     yield msg, cb, db, session
     for close in ctx.shutdown:
         await close()
@@ -119,7 +120,7 @@ async def test_full_flow(env, monkeypatch):
     r = await msg("/start")
     assert "Test!" in r.text and "Чем займёмся" in r.text
     titles = [b.text for row in r.reply_markup.inline_keyboard for b in row]
-    assert titles[:2] == ["🌤 Погода", "💼 Портфель"]
+    assert titles[:3] == ["🌤 Погода", "💼 Портфель", "📝 Дела"]
 
     # первое место
     r = await cb("m:weather")

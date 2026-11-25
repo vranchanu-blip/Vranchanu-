@@ -22,6 +22,7 @@ class AppContext:
     bot: Bot
     background: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
     shutdown: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
+    state: dict = field(default_factory=dict)  # общие объекты модулей (например, для тестов)
 
 
 @dataclass(frozen=True)

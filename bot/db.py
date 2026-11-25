@@ -35,6 +35,34 @@ CREATE TABLE IF NOT EXISTS ibkr_accounts (
     updated_at  TEXT NOT NULL
 );
 
+-- ===== Модуль «Дела» =====
+CREATE TABLE IF NOT EXISTS reminders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    due_at      TEXT NOT NULL,                   -- UTC ISO
+    tz          TEXT NOT NULL,
+    repeat      TEXT,                            -- daily | weekdays | weekly:N | monthly:N
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(active, due_at);
+
+CREATE TABLE IF NOT EXISTS todo_lists (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS todo_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_id     INTEGER NOT NULL REFERENCES todo_lists(id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    done        INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
