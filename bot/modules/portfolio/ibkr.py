@@ -125,7 +125,8 @@ def _status(xml_text: str) -> tuple[str, dict[str, str]]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        raise IbkrError("Непонятный ответ IBKR.") from exc
+        snippet = " ".join(xml_text.split())[:120]
+        raise IbkrError(f"Непонятный ответ IBKR: {snippet}") from exc
     fields = {child.tag: (child.text or "").strip() for child in root}
     return root.tag, fields
 
@@ -134,8 +135,20 @@ class IbkrClient:
     CACHE_TTL = 15 * 60  # отчёт Flex обновляется раз в день, чаще не дёргаем IBKR
 
     def __init__(self, timeout: float = 60.0):
-        self._http = httpx.AsyncClient(timeout=timeout, headers={"User-Agent": USER_AGENT})
+        self._http = httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers={"User-Agent": USER_AGENT})
         self._cache: dict[tuple[str, str], tuple[float, Portfolio]] = {}
+
+    async def _get(self, url: str, params: dict) -> httpx.Response:
+        """GET без утечки токена в текст ошибок (в URL ошибок httpx он был бы виден)."""
+        try:
+            resp = await self._http.get(url, params=params)
+        except httpx.TimeoutException as exc:
+            raise IbkrError("IBKR не ответил вовремя. Попробуйте через пару минут.") from exc
+        except httpx.HTTPError as exc:
+            raise IbkrError(f"Нет связи с IBKR ({type(exc).__name__}).") from exc
+        if resp.status_code >= 400:
+            raise IbkrError(f"IBKR ответил ошибкой HTTP {resp.status_code}.")
+        return resp
 
     async def portfolio(self, token: str, query_id: str, fresh: bool = False) -> Portfolio:
         key = (token, query_id)
@@ -150,8 +163,7 @@ class IbkrClient:
         self._cache.pop((token, query_id), None)
 
     async def _fetch(self, token: str, query_id: str) -> str:
-        resp = await self._http.get(SEND_URL, params={"t": token, "q": query_id, "v": "3"})
-        resp.raise_for_status()
+        resp = await self._get(SEND_URL, {"t": token, "q": query_id, "v": "3"})
         _, fields = _status(resp.text)
         if fields.get("Status") != "Success":
             raise IbkrError(f"IBKR: {fields.get('ErrorMessage') or 'запрос отклонён'} (код {fields.get('ErrorCode', '?')})")
@@ -161,8 +173,7 @@ class IbkrClient:
 
         for attempt in range(10):
             await asyncio.sleep(3 if attempt == 0 else 5)
-            resp = await self._http.get(url, params={"t": token, "q": ref, "v": "3"})
-            resp.raise_for_status()
+            resp = await self._get(url, {"t": token, "q": ref, "v": "3"})
             if "<FlexQueryResponse" in resp.text[:500]:
                 return resp.text
             _, fields = _status(resp.text)

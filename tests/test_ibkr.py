@@ -89,3 +89,40 @@ async def test_fetch_error_message():
     else:
         raise AssertionError("expected IbkrError")
     await c.close()
+
+
+async def test_http_error_hides_token():
+    def handler(request):
+        return httpx.Response(403, text="denied")
+
+    c = make_client(handler)
+    try:
+        await c.portfolio("SECRETTOKEN123", "1")
+    except IbkrError as exc:
+        assert "HTTP 403" in str(exc) and "SECRETTOKEN123" not in str(exc)
+    else:
+        raise AssertionError("expected IbkrError")
+    await c.close()
+
+
+async def test_follows_redirect(monkeypatch):
+    import bot.modules.portfolio.ibkr as mod
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr(mod.asyncio, "sleep", no_sleep)
+
+    def handler(request):
+        if request.url.host == "ndcdyn.interactivebrokers.com":
+            return httpx.Response(302, headers={"Location": "https://gdcdyn.ibkr.test/SendRequest?t=x&q=1&v=3"})
+        if "SendRequest" in request.url.path:
+            return httpx.Response(200, text="<FlexStatementResponse><Status>Success</Status>"
+                                            "<ReferenceCode>7</ReferenceCode>"
+                                            "<Url>https://gdcdyn.ibkr.test/GetStatement</Url></FlexStatementResponse>")
+        return httpx.Response(200, text=STATEMENT)
+
+    c = IbkrClient()
+    c._http = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
+    assert len((await c.portfolio("tok", "1")).positions) == 2
+    await c.close()
