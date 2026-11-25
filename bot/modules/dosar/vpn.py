@@ -42,6 +42,16 @@ def parse_config(raw: str) -> dict:
     if not isinstance(cfg, dict) or not cfg.get("outbounds"):
         raise VpnConfigError("В настройке нет раздела «outbounds» — это не конфигурация Xray.")
     proxy_url(cfg)  # проверка, что есть локальный вход
+    return sanitize(cfg)
+
+
+def sanitize(cfg: dict) -> dict:
+    """Убрать то, что имеет смысл только на телефоне: пути к журналам, API и статистику."""
+    cfg = dict(cfg)
+    level = (cfg.get("log") or {}).get("loglevel", "warning")
+    cfg["log"] = {"loglevel": level if level in ("debug", "info", "warning", "error", "none") else "warning"}
+    for key in ("api", "stats", "metrics"):
+        cfg.pop(key, None)
     return cfg
 
 
@@ -114,6 +124,8 @@ class XrayManager:
         cfg = self.load()
         if cfg is None:
             raise VpnConfigError("VPN не настроен.")
+        cfg = sanitize(cfg)
+        self.save(cfg)  # чинит и настройки, сохранённые старой версией бота
         await self.stop()
         await self.ensure_binary()
         logf = open(self.log_path, "ab")

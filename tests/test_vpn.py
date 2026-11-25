@@ -33,3 +33,9 @@ def test_manager_save_load_remove(tmp_path):
     assert m.load() == CFG and (tmp_path / "xray.json").stat().st_mode & 0o777 == 0o600
     m.remove()
     assert not m.configured
+
+
+def test_sanitize_drops_phone_paths():
+    cfg = parse_config(json.dumps({**CFG, "log": {"access": "/private/var/mobile/x/access.log", "loglevel": "info"},
+                                   "api": {"tag": "api"}, "stats": {}}))
+    assert cfg["log"] == {"loglevel": "info"} and "api" not in cfg and "stats" not in cfg
