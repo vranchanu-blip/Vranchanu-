@@ -119,7 +119,7 @@ async def test_full_flow(env, monkeypatch):
     r = await msg("/start")
     assert "Test!" in r.text and "Чем займёмся" in r.text
     titles = [b.text for row in r.reply_markup.inline_keyboard for b in row]
-    assert titles[:2] == ["🌤 Погода", "💼 Портфель (скоро)"]
+    assert titles[:2] == ["🌤 Погода", "💼 Портфель"]
 
     # первое место
     r = await cb("m:weather")
@@ -170,7 +170,13 @@ async def test_full_flow(env, monkeypatch):
     assert "Погода" in r.text
     r = await msg("/admin")
     assert "Пользователей: 1" in r.text
+    from bot.modules.portfolio.market import MarketClient
+
+    async def fake_quote(self, symbol):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(MarketClient, "quote", fake_quote)
     r = await cb("m:portfolio")
-    assert "портфель" in r.text
+    assert "S&amp;P 500</b> — нет данных" in r.text
     r = await cb("core:main")
     assert "Чем займёмся" in r.text
