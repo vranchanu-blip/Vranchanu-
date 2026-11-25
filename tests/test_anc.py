@@ -54,3 +54,22 @@ async def test_relay_url():
         "https://anc.example.workers.dev/?url=https%3A%2F%2Fcetatenie.just.ro%2Fx.pdf%3Fv%3D1"
     )
     await c.close()
+
+
+async def test_get_retries_on_503(monkeypatch):
+    import httpx
+    import bot.modules.dosar.anc as anc
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(503 if len(calls) < 3 else 200, text="ok")
+
+    async def no_sleep(_):
+        pass
+
+    monkeypatch.setattr(anc.asyncio, "sleep", no_sleep)
+    c = AncClient()
+    c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    assert await c.get_text("https://cetatenie.just.ro/") == "ok" and len(calls) == 3
+    await c.close()

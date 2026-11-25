@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import io
 import re
@@ -23,6 +24,24 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 
 MAX_LINE = 220
+
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8,application/pdf",
+    "Accept-Language": "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+}
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -126,12 +145,35 @@ class AncClient:
         self._client = self._make_client(proxy)
 
     def _make_client(self, proxy: str | None) -> httpx.AsyncClient:
+        # Заголовки как у обычного Chrome: сайт ANC отвечает 503 «непохожим на браузер» клиентам.
         return httpx.AsyncClient(
             proxy=proxy,
             timeout=self._timeout,
             follow_redirects=True,
-            headers={"User-Agent": USER_AGENT, "Accept-Language": "ro,en;q=0.8"},
+            http2=True,
+            headers=BROWSER_HEADERS,
         )
+
+    async def _get(self, url: str) -> httpx.Response:
+        """GET с повторами при 5xx и сетевых ошибках (сайт ANC часто «моргает»)."""
+        last: Exception | None = None
+        for attempt in range(4):
+            if attempt:
+                await asyncio.sleep(5 * attempt)
+            try:
+                resp = await self._client.get(self._via_relay(url))
+            except httpx.TransportError as exc:
+                last = exc
+                continue
+            if resp.status_code >= 500:
+                last = httpx.HTTPStatusError(
+                    f"{resp.status_code} {resp.reason_phrase} for {url}", request=resp.request, response=resp
+                )
+                continue
+            resp.raise_for_status()
+            return resp
+        assert last
+        raise last
 
     async def set_proxy(self, proxy: str | None) -> None:
         """Сменить прокси на лету (например, после запуска VPN)."""
@@ -146,14 +188,10 @@ class AncClient:
         return str(httpx.URL(self.relay).copy_merge_params({"url": url}))
 
     async def get_text(self, url: str) -> str:
-        resp = await self._client.get(self._via_relay(url))
-        resp.raise_for_status()
-        return resp.text
+        return (await self._get(url)).text
 
     async def get_bytes(self, url: str) -> bytes:
-        resp = await self._client.get(self._via_relay(url))
-        resp.raise_for_status()
-        return resp.content
+        return (await self._get(url)).content
 
     async def close(self) -> None:
         await self._client.aclose()
