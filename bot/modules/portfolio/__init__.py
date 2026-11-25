@@ -45,7 +45,6 @@ def render(results: list[tuple[str, str, Quote | Exception]]) -> str:
             f"{flag} <b>{name}</b>  <code>{num(q.price)}</code>",
             f"За день ({q.market_date:%d.%m}): {change(q.day_pct)}",
             f"С начала года: {change(q.ytd_pct)}",
-            f"За 12 месяцев: {change(q.year_pct)}",
             "",
         ]
     status = "🟢 торги идут" if open_any else "🌙 биржа закрыта — цены последнего закрытия"
