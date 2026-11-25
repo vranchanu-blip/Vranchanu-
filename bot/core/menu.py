@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
@@ -92,8 +94,16 @@ def setup_core(ctx: AppContext, modules: list[Module]) -> Router:
             f"Итог: {summary}\n\n"
             "/refresh — проверить ANC сейчас\n"
             "/vpn — настроить VPN для сайта ANC\n"
+            "/update — обновить бота (только на сервере)\n"
             "/broadcast текст — рассылка всем"
         )
+
+    @router.message(Command("update"), F.from_user.id.in_(admins))
+    async def update(message: Message) -> None:
+        # На сервере бот работает как служба systemd: после выхода она перезапускает его,
+        # а перед запуском подтягивает свежий код (см. deploy/install.sh).
+        await message.answer("🔄 Перезапускаюсь с обновлением, это займёт 1–3 минуты. Потом отправьте /start.")
+        asyncio.get_running_loop().call_later(1, os.kill, os.getpid(), signal.SIGTERM)
 
     @router.message(Command("broadcast"), F.from_user.id.in_(admins))
     async def broadcast(message: Message, command: CommandObject) -> None:
