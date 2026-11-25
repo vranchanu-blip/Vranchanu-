@@ -15,7 +15,7 @@ USER_AGENT = "Mozilla/5.0 (compatible; PersonalTelegramBot/1.0)"
 # (тикер Yahoo, название, флаг)
 INDICES = [
     ("^GSPC", "S&P 500", "🇺🇸"),
-    ("^IXIC", "Nasdaq Composite", "🇺🇸"),
+    ("^NDX", "Nasdaq-100", "🇺🇸"),
 ]
 
 

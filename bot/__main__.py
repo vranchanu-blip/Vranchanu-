@@ -56,7 +56,7 @@ async def main() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="weather", description="Погода"),
-        BotCommand(command="market", description="Индексы S&P 500 и Nasdaq"),
+        BotCommand(command="market", description="Индексы S&P 500 и Nasdaq-100"),
         BotCommand(command="help", description="Помощь"),
     ])
 
