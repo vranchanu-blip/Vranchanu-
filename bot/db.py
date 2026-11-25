@@ -15,6 +15,18 @@ CREATE TABLE IF NOT EXISTS users (
     created_at  TEXT NOT NULL
 );
 
+-- ===== Модуль «Погода» =====
+CREATE TABLE IF NOT EXISTS places (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    lat         REAL NOT NULL,
+    lon         REAL NOT NULL,
+    tz          TEXT,                            -- часовой пояс места (из прогноза)
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_places_user ON places(user_id);
+
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -26,6 +38,10 @@ MIGRATIONS = [
     ("users", "lat", "REAL"),
     ("users", "lon", "REAL"),
     ("users", "place", "TEXT"),
+    ("users", "active_place_id", "INTEGER"),
+    ("users", "morning_time", "TEXT"),          # 'HH:MM' или NULL = выкл
+    ("users", "morning_sent", "TEXT"),          # дата последнего утреннего прогноза
+    ("users", "alerts", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

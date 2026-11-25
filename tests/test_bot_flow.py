@@ -106,11 +106,11 @@ def test_render_forecast():
 async def test_full_flow(env, monkeypatch):
     from bot.modules.weather.api import Forecast, WeatherClient
 
-    async def fake_forecast(self, lat, lon):
-        return Forecast(FORECAST)
+    async def fake_forecast(self, lat, lon, fresh=False):
+        return Forecast({**FORECAST, "timezone": "Europe/Bucharest"})
 
     async def fake_place(self, lat, lon):
-        return "Кишинёв, Молдова"
+        return "Отопень, Румыния"
 
     monkeypatch.setattr(WeatherClient, "forecast", fake_forecast)
     monkeypatch.setattr(WeatherClient, "place_name", fake_place)
@@ -121,20 +121,48 @@ async def test_full_flow(env, monkeypatch):
     titles = [b.text for row in r.reply_markup.inline_keyboard for b in row]
     assert titles[:2] == ["🌤 Погода", "💼 Портфель (скоро)"]
 
+    # первое место
     r = await cb("m:weather")
-    assert "Где вы находитесь" in r.text and r.reply_markup.keyboard[0][0].request_location
+    assert "Добавим место" in r.text and r.reply_markup.keyboard[0][0].request_location
+    r = await msg(location=Location(latitude=44.55, longitude=26.07))
+    assert "Как назвать" in r.text
+    pid = (await db.fetchone("SELECT id FROM places"))["id"]
+    r = await cb(f"wx:nm:{pid}:home")
+    assert "🏠 Дом" in r.text and "Прогноз" in r.text
+    assert (await db.fetchone("SELECT tz FROM places"))["tz"] == "Europe/Bucharest"
 
+    # второе место со своим названием
+    r = await cb("wx:places")
+    assert "✅ 🏠 Дом" in [b.text for row in r.reply_markup.inline_keyboard for b in row]
+    r = await cb("wx:add")
+    assert "Добавим место" in r.text
     r = await msg(location=Location(latitude=47.0, longitude=28.8))
-    assert "Кишинёв, Молдова" in r.text and "Прогноз" in r.text
-    saved = [c for c in session.calls if isinstance(c, SendMessage)][-2]
-    assert "Место сохранено: Кишинёв, Молдова" in saved.text
-    row = await db.fetchone("SELECT lat, place FROM users WHERE id = 1")
-    assert row["lat"] == 47.0
+    r = await msg("Мама")
+    assert "<b>Мама</b>" in r.text
+    buttons = [b.text for row in r.reply_markup.inline_keyboard for b in row]
+    assert "• Мама" in buttons and "🏠 Дом" in buttons
+    r = await cb(f"wx:pl:{pid}")
+    assert "🏠 Дом" in r.text.splitlines()[0]
 
-    r = await cb("m:weather")
-    assert isinstance(r, EditMessageText) and "Кишинёв" in r.text
-    r = await msg("/weather")
-    assert "Кишинёв" in r.text
+    # уведомления
+    r = await cb("wx:notif")
+    assert "выключен" in r.text and "🏠 Дом" in r.text
+    r = await cb("wx:morning")
+    assert "Во сколько" in r.text
+    r = await cb("wx:mt:0730")
+    assert "каждый день в 07:30" in r.text
+    r = await cb("wx:mt:custom")
+    r = await msg("25:00")
+    assert "Не понял" in r.text
+    r = await msg("6.45")
+    assert "каждый день в 06:45" in r.text
+    r = await cb("wx:alerts")
+    assert "⚠️ Предупреждения: вкл" in [b.text for row in r.reply_markup.inline_keyboard for b in row]
+
+    # удаление
+    r = await cb("wx:delmode")
+    r = await cb(f"wx:del:{pid}")
+    assert "Дом" not in r.text and len(await db.fetchall("SELECT * FROM places")) == 1
 
     r = await msg("❌ Отмена")
     assert "Главное меню" in r.text

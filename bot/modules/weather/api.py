@@ -1,6 +1,7 @@
 """Погода от Open-Meteo (бесплатно, без ключа) и название места от OpenStreetMap."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
@@ -65,9 +66,60 @@ def wind_dir(degrees: float) -> str:
     return WIND_DIRS[round(degrees / 45) % 8]
 
 
+STORM = {95, 96, 99}
+SNOW = {71, 73, 75, 77, 85, 86}
+RAIN = {61, 63, 65, 66, 67, 80, 81, 82}
+HEAVY_RAIN = {63, 65, 66, 67, 81, 82}
+GUSTS_LIMIT = 15  # м/с
+
+
+@dataclass(frozen=True)
+class Alert:
+    key: str      # тип события: storm / snow / rain / frost / wind
+    text: str
+
+
 @dataclass(frozen=True)
 class Forecast:
     raw: dict
+
+    @property
+    def tz(self) -> str | None:
+        return self.raw.get("timezone")
+
+    def alerts(self, hours: int = 12) -> list[Alert]:
+        """Непогода в ближайшие `hours` часов: по одному предупреждению каждого типа, самое раннее."""
+        cur, hourly = self.raw["current"], self.raw["hourly"]
+        now = datetime.fromisoformat(cur["time"])
+        found: dict[str, Alert] = {}
+        coldest: tuple[float, datetime] | None = None
+        for i, t in enumerate(hourly["time"]):
+            at = datetime.fromisoformat(t)
+            if at <= now:
+                continue
+            if (at - now).total_seconds() > hours * 3600:
+                break
+            code = int(hourly["weather_code"][i])
+            prob = hourly["precipitation_probability"][i] or 0
+            gusts = (hourly.get("wind_gusts_10m") or [0] * len(hourly["time"]))[i] or 0
+            temp_ = hourly["temperature_2m"][i]
+            when = f"около {at:%H:%M}" if at.date() == now.date() else f"завтра около {at:%H:%M}"
+            if code in STORM and prob >= 40:
+                found.setdefault("storm", Alert("storm", f"⛈ Гроза {when}"))
+            elif code in SNOW and prob >= 50:
+                found.setdefault("snow", Alert("snow", f"🌨 Снег {when} (вероятность {prob}%)"))
+            elif code in RAIN and prob >= 60 and (code in HEAVY_RAIN or prob >= 80):
+                found.setdefault("rain", Alert("rain", f"🌧 {describe(code).capitalize()} {when} (вероятность {prob}%)"))
+            if gusts >= GUSTS_LIMIT:
+                found.setdefault("wind", Alert("wind", f"💨 Сильный ветер {when}, порывы до {round(gusts)} м/с"))
+            if coldest is None or temp_ < coldest[0]:
+                coldest = (temp_, at)
+        if coldest and coldest[0] <= 0 < cur["temperature_2m"]:
+            t, at = coldest
+            when = f"к {at:%H:%M}" if at.date() == now.date() else f"завтра к {at:%H:%M}"
+            found["frost"] = Alert("frost", f"🥶 Заморозки: до {temp(t)} {when}")
+        order = ["storm", "snow", "rain", "wind", "frost"]
+        return [found[k] for k in order if k in found]
 
     def render(self, place: str | None) -> str:
         cur, daily, hourly = self.raw["current"], self.raw["daily"], self.raw["hourly"]
@@ -116,16 +168,28 @@ class Forecast:
 
 
 class WeatherClient:
+    CACHE_TTL = 600  # прогноз одного места не запрашиваем чаще раза в 10 минут
+
     def __init__(self, timeout: float = 20.0):
         self._http = httpx.AsyncClient(timeout=timeout, headers={"User-Agent": USER_AGENT})
+        self._cache: dict[tuple[float, float], tuple[float, Forecast]] = {}
 
-    async def forecast(self, lat: float, lon: float) -> Forecast:
+    async def forecast(self, lat: float, lon: float, fresh: bool = False) -> Forecast:
+        key = (round(lat, 3), round(lon, 3))
+        hit = self._cache.get(key)
+        if hit and not fresh and time.monotonic() - hit[0] < self.CACHE_TTL:
+            return hit[1]
+        result = await self._fetch(lat, lon)
+        self._cache[key] = (time.monotonic(), result)
+        return result
+
+    async def _fetch(self, lat: float, lon: float) -> Forecast:
         resp = await self._http.get(FORECAST_URL, params={
             "latitude": lat,
             "longitude": lon,
             "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,"
                        "wind_speed_10m,wind_direction_10m,is_day",
-            "hourly": "temperature_2m,weather_code,precipitation_probability",
+            "hourly": "temperature_2m,weather_code,precipitation_probability,wind_gusts_10m",
             "daily": "weather_code,temperature_2m_max,temperature_2m_min,"
                      "precipitation_probability_max,sunrise,sunset",
             "wind_speed_unit": "ms",
