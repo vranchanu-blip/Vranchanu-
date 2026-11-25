@@ -91,6 +91,7 @@ def setup_core(ctx: AppContext, modules: list[Module]) -> Router:
             f"Последняя успешная: {last_ok}\n"
             f"Итог: {summary}\n\n"
             "/refresh — проверить ANC сейчас\n"
+            "/vpn — настроить VPN для сайта ANC\n"
             "/broadcast текст — рассылка всем"
         )
 

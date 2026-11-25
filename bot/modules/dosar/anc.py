@@ -121,12 +121,24 @@ class AncClient:
     def __init__(self, proxy: str | None = None, timeout: float = 60.0):
         # Адрес посредника (например, Cloudflare Worker): запросы идут на relay?url=<адрес ANC>.
         self.relay: str | None = None
-        self._client = httpx.AsyncClient(
+        self.proxy = proxy
+        self._timeout = timeout
+        self._client = self._make_client(proxy)
+
+    def _make_client(self, proxy: str | None) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
             proxy=proxy,
-            timeout=timeout,
+            timeout=self._timeout,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT, "Accept-Language": "ro,en;q=0.8"},
         )
+
+    async def set_proxy(self, proxy: str | None) -> None:
+        """Сменить прокси на лету (например, после запуска VPN)."""
+        if proxy == self.proxy:
+            return
+        old, self._client, self.proxy = self._client, self._make_client(proxy), proxy
+        await old.aclose()
 
     def _via_relay(self, url: str) -> str:
         if not self.relay:

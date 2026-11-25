@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from html import escape
@@ -18,6 +19,7 @@ from bot.modules.dosar import texts
 from bot.modules.dosar.anc import AncClient, normalize_number
 from bot.modules.dosar.monitor import AncMonitor, CycleResult
 from bot.modules.dosar.service import MAX_DOSARS_PER_USER, DosarService
+from bot.modules.dosar.vpn import VpnConfigError, XrayManager, parse_config
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +29,10 @@ REFRESH_COOLDOWN = timedelta(minutes=5)
 class AddDosar(StatesGroup):
     number = State()
     label = State()
+
+
+class VpnSetup(StatesGroup):
+    config = State()
 
 
 class EditDosar(StatesGroup):
@@ -60,6 +66,16 @@ def setup(ctx: AppContext) -> Module:
     async def on_result(result: CycleResult) -> None:
         await notify(ctx, svc, result)
 
+    vpn = XrayManager(os.path.dirname(os.path.abspath(ctx.settings.db_path)) if ctx.settings.db_path != ":memory:" else "data")
+
+    async def ensure_vpn() -> None:
+        """Если VPN настроен — держим Xray запущенным и ходим на ANC через него."""
+        if not vpn.configured:
+            await client.set_proxy(ctx.settings.anc_proxy)
+            return
+        if not vpn.running:
+            await client.set_proxy(await vpn.start())
+
     monitor = AncMonitor(
         ctx.db,
         client,
@@ -67,9 +83,11 @@ def setup(ctx: AppContext) -> Module:
         pdf_filter=ctx.settings.anc_pdf_filter,
         interval_min=ctx.settings.check_interval_min,
         on_result=on_result,
+        before_cycle=ensure_vpn,
     )
     ctx.background.append(monitor.run_forever)
     ctx.shutdown.append(client.close)
+    ctx.shutdown.append(vpn.stop)
 
     # ---------- экраны ----------
     async def menu_view(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
@@ -326,6 +344,66 @@ def setup(ctx: AppContext) -> Module:
         result = await monitor.run_cycle()
         errors = "\n".join(escape(e) for e in result.errors[:5])
         await message.answer(f"Готово: {result.summary()}" + (f"\n\n<code>{errors}</code>" if errors else ""))
+
+    admins = ctx.settings.admin_ids
+
+    @router.message(Command("vpn"), F.from_user.id.in_(admins))
+    async def vpn_cmd(message: Message, command: CommandObject, state: FSMContext) -> None:
+        arg = (command.args or "").strip().lower()
+        if arg == "off":
+            await vpn.stop()
+            vpn.remove()
+            await client.set_proxy(ctx.settings.anc_proxy)
+            await message.answer("VPN выключен, бот ходит на сайт ANC напрямую.")
+            return
+        if arg == "status":
+            status = "работает" if vpn.running else ("настроен, не запущен" if vpn.configured else "не настроен")
+            await message.answer(f"VPN: {status}\n<code>{escape(vpn.tail_log())}</code>")
+            return
+        await state.set_state(VpnSetup.config)
+        await message.answer(
+            "Отправьте JSON-настройку Xray из приложения VPN — текстом или файлом .json.\n"
+            "Она сохранится только на сервере бота.\n/cancel — отмена\n\n"
+            "Другие команды: /vpn status, /vpn off"
+        )
+
+    @router.message(VpnSetup.config, F.from_user.id.in_(admins), F.text | F.document)
+    async def vpn_receive(message: Message, state: FSMContext) -> None:
+        if message.document:
+            if (message.document.file_size or 0) > 200_000:
+                await message.answer("Файл слишком большой для настройки VPN.")
+                return
+            buf = await ctx.bot.download(message.document)
+            raw = buf.read().decode("utf-8", errors="replace")
+        else:
+            raw = message.text or ""
+        try:
+            cfg = parse_config(raw)
+        except VpnConfigError as exc:
+            await message.answer(f"⚠️ {escape(str(exc))}\nПопробуйте ещё раз или /cancel.")
+            return
+        await state.clear()
+        try:
+            await message.delete()  # не держим ключи VPN в истории чата
+        except Exception:  # noqa: BLE001
+            pass
+        vpn.save(cfg)
+        note = await message.answer("Настройка получена. Скачиваю и запускаю VPN…")
+        try:
+            await client.set_proxy(await vpn.start())
+        except Exception as exc:  # noqa: BLE001
+            await note.edit_text(f"⚠️ Не удалось запустить VPN: <code>{escape(str(exc))[:800]}</code>")
+            return
+        try:
+            await client.get_text(ctx.settings.anc_source_pages[0])
+        except Exception as exc:  # noqa: BLE001
+            await note.edit_text(
+                "VPN запущен, но сайт ANC через него не ответил: "
+                f"<code>{escape(repr(exc))[:300]}</code>\nПопробуйте настройку другого сервера: /vpn"
+            )
+            return
+        await note.edit_text("✅ VPN работает, сайт ANC отвечает. Запускаю проверку…")
+        monitor.request_refresh()
 
     @router.message(Command("relay"), F.from_user.id.in_(ctx.settings.admin_ids))
     async def admin_relay(message: Message, command: CommandObject) -> None:

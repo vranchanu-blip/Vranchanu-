@@ -61,6 +61,7 @@ class AncMonitor:
         interval_min: int = 30,
         on_result: ResultHandler | None = None,
         download_delay: float = 0.5,
+        before_cycle: Callable[[], Awaitable[None]] | None = None,
     ):
         self.db = db
         self.fetcher = fetcher
@@ -69,6 +70,7 @@ class AncMonitor:
         self.interval_min = interval_min
         self.on_result = on_result
         self.download_delay = download_delay
+        self.before_cycle = before_cycle
         self._lock = asyncio.Lock()
         self._wake = asyncio.Event()
 
@@ -92,6 +94,11 @@ class AncMonitor:
                 pass
 
     async def run_cycle(self) -> CycleResult:
+        if self.before_cycle:
+            try:
+                await self.before_cycle()
+            except Exception:  # noqa: BLE001 — проверка пойдёт как есть, ошибка будет видна в итоге
+                log.exception("before_cycle failed")
         async with self._lock:
             result = await self._cycle()
         await self.db.set_kv("anc_last_cycle_at", result.started_at)
