@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
-from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
+from aiogram.methods import AnswerCallbackQuery, DeleteMessage, EditMessageText, SendMessage
 from aiogram.types import CallbackQuery, Chat, Location, Message, Update, User
 
 from bot.__main__ import MODULES, UserMiddleware
@@ -25,8 +25,8 @@ class FakeSession(BaseSession):
         self.calls.append(method)
         if isinstance(method, (SendMessage, EditMessageText)):
             return Message(message_id=len(self.calls), date=datetime.now(),
-                           chat=Chat(id=1, type="private"), text=method.text)
-        if isinstance(method, AnswerCallbackQuery):
+                           chat=Chat(id=1, type="private"), text=method.text).as_(bot)
+        if isinstance(method, (AnswerCallbackQuery, DeleteMessage)):
             return True
         raise AssertionError(f"unexpected {method!r}")
 
@@ -177,6 +177,30 @@ async def test_full_flow(env, monkeypatch):
 
     monkeypatch.setattr(MarketClient, "quote", fake_quote)
     r = await cb("m:portfolio")
-    assert "S&amp;P 500</b> — нет данных" in r.text
+    assert "S&amp;P 500</b> — нет данных" in r.text and "Биткоин</b> — нет данных" in r.text
+
+    from bot.modules.portfolio.ibkr import IbkrClient, parse_statement
+    from tests.test_ibkr import STATEMENT
+
+    async def fake_portfolio(self, token, query_id, fresh=False):
+        assert token == "1234567890abcdef" and query_id == "987654"
+        return parse_statement(STATEMENT)
+
+    monkeypatch.setattr(IbkrClient, "portfolio", fake_portfolio)
+    r = await cb("pf:ibkr")
+    assert "Flex Query" in r.text
+    r = await cb("pf:ibkr:setup")
+    r = await msg("short")
+    assert "Не похоже" in r.text
+    r = await msg("1234567890abcdef")
+    assert "Query ID" in r.text and any(isinstance(c, DeleteMessage) for c in session.calls)
+    r = await msg("abc")
+    assert "число" in r.text
+    r = await msg("987654")
+    assert "IBKR подключён" in r.text and "AAPL" in r.text
+    r = await cb("pf:ibkr")
+    assert "Портфель IBKR" in r.text
+    r = await cb("pf:ibkr:offok")
+    assert "Flex Query" in r.text and await db.fetchone("SELECT * FROM ibkr_accounts") is None
     r = await cb("core:main")
     assert "Чем займёмся" in r.text

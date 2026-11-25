@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS places (
 );
 CREATE INDEX IF NOT EXISTS idx_places_user ON places(user_id);
 
+-- ===== Модуль «Портфель» =====
+CREATE TABLE IF NOT EXISTS ibkr_accounts (
+    user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token       TEXT NOT NULL,                   -- токен Flex Web Service (только чтение отчётов)
+    query_id    TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT

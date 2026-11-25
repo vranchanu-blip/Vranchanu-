@@ -12,10 +12,25 @@ import httpx
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 USER_AGENT = "Mozilla/5.0 (compatible; PersonalTelegramBot/1.0)"
 
-# (тикер Yahoo, название, флаг)
-INDICES = [
-    ("^GSPC", "S&P 500", "🇺🇸"),
-    ("^NDX", "Nasdaq-100", "🇺🇸"),
+@dataclass(frozen=True)
+class Instrument:
+    symbol: str      # тикер Yahoo
+    name: str
+    icon: str
+    unit: str = ""   # подпись к цене
+
+
+# (заголовок группы, показывать ли статус биржи США, инструменты)
+GROUPS: list[tuple[str, bool, list[Instrument]]] = [
+    ("📊 <b>Индексы США</b>", True, [
+        Instrument("^GSPC", "S&P 500", "🇺🇸"),
+        Instrument("^NDX", "Nasdaq-100", "🇺🇸"),
+    ]),
+    ("🪙 <b>Сырьё и крипта</b>", False, [
+        Instrument("SI=F", "Серебро", "🥈", "$/унция"),
+        Instrument("BZ=F", "Нефть Brent", "🛢", "$/баррель"),
+        Instrument("BTC-USD", "Биткоин", "₿", "$"),
+    ]),
 ]
 
 

@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from bot.modules.portfolio import render
+from bot.modules.portfolio import render_markets
+from bot.modules.portfolio.market import Instrument
 from bot.modules.portfolio.market import parse_chart
 
 NY = ZoneInfo("America/New_York")
@@ -34,9 +35,14 @@ def test_parse_chart():
 
 def test_render():
     q = parse_chart(payload(), now=datetime(2026, 11, 26, 3, 0, tzinfo=timezone.utc))
-    text = render([("S&P 500", "🇺🇸", q), ("Nasdaq Composite", "🇺🇸", RuntimeError())])
+    text = render_markets([
+        ("📊 Индексы", True, [(Instrument("^GSPC", "S&P 500", "🇺🇸"), q),
+                              (Instrument("^NDX", "Nasdaq-100", "🇺🇸"), RuntimeError())]),
+        ("🪙 Сырьё", False, [(Instrument("SI=F", "Серебро", "🥈", "$/унция"), q)]),
+    ])
     assert "<code>6 000,00</code>" in text
     assert "За день (25.11): 🟢 <b>+1,69%</b>" in text
     assert "С начала года: 🟢 <b>+20,00%</b>" in text
-    assert "Nasdaq Composite</b> — нет данных" in text
-    assert "биржа закрыта" in text
+    assert "Nasdaq-100</b> — нет данных" in text
+    assert "S&amp;P 500" in text and "<i>$/унция</i>" in text
+    assert "биржа США закрыта" in text
