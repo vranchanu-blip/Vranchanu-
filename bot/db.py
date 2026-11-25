@@ -9,54 +9,24 @@ import aiosqlite
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY,           -- Telegram user id
-    username      TEXT,
-    first_name    TEXT,
-    notify_orders INTEGER NOT NULL DEFAULT 1,    -- уведомлять о новых приказах ANC
-    created_at    TEXT NOT NULL
+    id          INTEGER PRIMARY KEY,           -- Telegram user id
+    username    TEXT,
+    first_name  TEXT,
+    created_at  TEXT NOT NULL
 );
-
--- ===== Модуль «Досар» =====
-CREATE TABLE IF NOT EXISTS dosars (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    number       TEXT NOT NULL,                  -- нормализовано: 12345/RD/2021
-    label        TEXT,
-    submitted_on TEXT,                           -- ISO дата подачи (необязательно)
-    created_at   TEXT NOT NULL,
-    UNIQUE (user_id, number)
-);
-CREATE INDEX IF NOT EXISTS idx_dosars_number ON dosars(number);
-
--- PDF-документы, найденные на сайте ANC
-CREATE TABLE IF NOT EXISTS anc_documents (
-    url           TEXT PRIMARY KEY,
-    title         TEXT,
-    kind          TEXT NOT NULL,                 -- 'ordin' | 'stadiu' | 'other'
-    source_page   TEXT,
-    sha256        TEXT,
-    first_seen_at TEXT NOT NULL,
-    fetched_at    TEXT,
-    error         TEXT
-);
-
--- Строки PDF, в которых встречается номер досара
-CREATE TABLE IF NOT EXISTS anc_mentions (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    doc_url       TEXT NOT NULL REFERENCES anc_documents(url) ON DELETE CASCADE,
-    number        TEXT NOT NULL,
-    line          TEXT NOT NULL,
-    active        INTEGER NOT NULL DEFAULT 1,    -- 0 = строки больше нет в документе
-    first_seen_at TEXT NOT NULL,
-    UNIQUE (doc_url, number, line)
-);
-CREATE INDEX IF NOT EXISTS idx_mentions_number ON anc_mentions(number);
 
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
 """
+
+# Колонки, добавленные позже: (таблица, колонка, тип). Добавляются, если их ещё нет.
+MIGRATIONS = [
+    ("users", "lat", "REAL"),
+    ("users", "lon", "REAL"),
+    ("users", "place", "TEXT"),
+]
 
 
 def utcnow() -> str:
@@ -76,6 +46,11 @@ class Database:
         await self.conn.execute("PRAGMA foreign_keys = ON")
         await self.conn.execute("PRAGMA journal_mode = WAL")
         await self.conn.executescript(SCHEMA)
+        for table, column, kind in MIGRATIONS:
+            async with self.conn.execute(f"PRAGMA table_info({table})") as cur:
+                existing = {row[1] for row in await cur.fetchall()}
+            if column not in existing:
+                await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
         await self.conn.commit()
 
     async def close(self) -> None:

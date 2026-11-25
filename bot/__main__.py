@@ -14,10 +14,10 @@ from bot.config import load_settings
 from bot.core.menu import setup_core
 from bot.core.registry import AppContext
 from bot.db import Database
-from bot.modules import dosar, portfolio
+from bot.modules import portfolio, weather
 
 # Порядок = порядок кнопок в главном меню.
-MODULES = [dosar, portfolio]
+MODULES = [weather, portfolio]
 
 
 class UserMiddleware(BaseMiddleware):
@@ -55,8 +55,7 @@ async def main() -> None:
 
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
-        BotCommand(command="dosar", description="Мои досары"),
-        BotCommand(command="check", description="Проверить номер: /check 12345/RD/2021"),
+        BotCommand(command="weather", description="Погода"),
         BotCommand(command="help", description="Помощь"),
     ])
 

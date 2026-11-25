@@ -5,6 +5,9 @@ import asyncio
 import logging
 import os
 import signal
+from datetime import datetime
+from html import escape
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
@@ -16,27 +19,35 @@ from bot.core.registry import AppContext, Module
 
 log = logging.getLogger(__name__)
 
-WELCOME = (
-    "👋 <b>Привет!</b> Это ваш личный помощник.\n\n"
-    "Выберите раздел:"
-)
+TZ = ZoneInfo("Europe/Bucharest")
 
 HELP = (
-    "<b>Что умеет бот</b>\n\n"
-    "📁 <b>Досар</b> — отслеживание досаров на гражданство Румынии по ст. 11 "
-    "(номер вида <code>12345/RD/2021</code>). Бот регулярно проверяет сайт ANC "
-    "(cetatenie.just.ro), ищет ваш номер в списках «Stadiu dosar» и в приказах (Ordine) "
-    "и сразу присылает уведомление, когда номер появляется или строка о нём меняется.\n\n"
-    "Команды:\n"
+    "ℹ️ <b>Помощь</b>\n\n"
+    "🌤 <b>Погода</b> — прогноз по вашей геопозиции: сейчас, ближайшие часы и 3 дня вперёд. "
+    "Место запоминается, потом достаточно нажать «🔄 Обновить».\n\n"
+    "💼 <b>Портфель</b> — скоро.\n\n"
+    "<b>Команды</b>\n"
     "/start — главное меню\n"
-    "/dosar — раздел «Досар»\n"
-    "/check 12345/RD/2021 — разовая проверка любого номера\n"
+    "/weather — погода\n"
     "/help — эта справка"
 )
 
 
+def greeting(name: str | None) -> str:
+    hour = datetime.now(TZ).hour
+    hello = (
+        "Доброе утро" if 5 <= hour < 12 else
+        "Добрый день" if 12 <= hour < 18 else
+        "Добрый вечер" if 18 <= hour < 23 else
+        "Доброй ночи"
+    )
+    who = f", {escape(name)}" if name else ""
+    return f"👋 <b>{hello}{who}!</b>\n\nЧем займёмся?"
+
+
 def main_menu_kb(modules: list[Module]) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=m.title, callback_data=f"m:{m.key}")] for m in modules if m.enabled]
+    buttons = [InlineKeyboardButton(text=m.title, callback_data=f"m:{m.key}") for m in modules if m.enabled]
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     rows.append([InlineKeyboardButton(text="ℹ️ Помощь", callback_data="core:help")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -54,7 +65,7 @@ def setup_core(ctx: AppContext, modules: list[Module]) -> Router:
     @router.message(CommandStart())
     async def start(message: Message, state: FSMContext) -> None:
         await state.clear()
-        await message.answer(WELCOME, reply_markup=main_menu_kb(modules))
+        await message.answer(greeting(message.from_user.first_name), reply_markup=main_menu_kb(modules))
 
     @router.message(Command("help"))
     async def help_cmd(message: Message) -> None:
@@ -63,7 +74,7 @@ def setup_core(ctx: AppContext, modules: list[Module]) -> Router:
     @router.callback_query(F.data == "core:main")
     async def main_cb(call: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
-        await call.message.edit_text(WELCOME, reply_markup=main_menu_kb(modules))
+        await call.message.edit_text(greeting(call.from_user.first_name), reply_markup=main_menu_kb(modules))
         await call.answer()
 
     @router.callback_query(F.data == "core:help")
@@ -74,26 +85,15 @@ def setup_core(ctx: AppContext, modules: list[Module]) -> Router:
     @router.message(Command("cancel"))
     async def cancel(message: Message, state: FSMContext) -> None:
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu_kb(modules))
+        await message.answer("Отменено.\n\n" + greeting(message.from_user.first_name), reply_markup=main_menu_kb(modules))
 
     # ---------- админка ----------
     @router.message(Command("admin"), F.from_user.id.in_(admins))
     async def admin(message: Message) -> None:
-        db = ctx.db
-        users = await db.fetchone("SELECT COUNT(*) AS c FROM users")
-        dosars = await db.fetchone("SELECT COUNT(*) AS c, COUNT(DISTINCT number) AS u FROM dosars")
-        last = await db.get_kv("anc_last_cycle_at") or "—"
-        last_ok = await db.get_kv("anc_last_success_at") or "—"
-        summary = await db.get_kv("anc_last_cycle_summary") or "—"
+        users = await ctx.db.fetchone("SELECT COUNT(*) AS c FROM users")
         await message.answer(
-            "<b>Админ</b>\n"
-            f"Пользователей: {users['c']}\n"
-            f"Досаров: {dosars['c']} (уникальных: {dosars['u']})\n"
-            f"Последняя проверка ANC: {last}\n"
-            f"Последняя успешная: {last_ok}\n"
-            f"Итог: {summary}\n\n"
-            "/refresh — проверить ANC сейчас\n"
-            "/vpn — настроить VPN для сайта ANC\n"
+            "🛠 <b>Админ</b>\n"
+            f"Пользователей: {users['c']}\n\n"
             "/update — обновить бота (только на сервере)\n"
             "/broadcast текст — рассылка всем"
         )
