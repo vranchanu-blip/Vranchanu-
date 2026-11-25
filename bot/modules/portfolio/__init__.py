@@ -1,6 +1,7 @@
 """Модуль «Портфель»: рынки (индексы, сырьё, крипта) и портфель Interactive Brokers."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from html import escape
@@ -22,6 +23,7 @@ log = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Europe/Bucharest")
 MAX_POSITIONS = 20
+CUR_SIGN = {"USD": "$", "EUR": "€", "GBP": "£", "CHF": "CHF", "RON": "lei"}
 
 IBKR_HELP = (
     "🏦 <b>Подключение Interactive Brokers</b>\n\n"
@@ -33,7 +35,9 @@ IBKR_HELP = (
     "• Название: <code>bot</code>\n"
     "• Разделы: <b>Account Information</b>, <b>Open Positions</b> (вариант <i>Summary</i>), "
     "<b>Cash Report</b> — в каждом «Select All» → Save\n"
-    "• Format: <b>XML</b>, Period: <b>Last Business Day</b>\n"
+    "• Ещё разделы для движения портфеля: <b>Change in NAV</b> (Изменение в NAV) и "
+    "<b>Net Asset Value (NAV) in Base</b> (NAV в базовой валюте)\n"
+    "• Format: <b>XML</b>, Period: <b>Year to Date</b> (С начала года)\n"
     "• Save → запомните <b>Query ID</b> (число).\n\n"
     "<b>2. Токен</b>\n"
     "На той же странице: <b>Flex Web Service Configuration</b> (⚙️) → включите → "
@@ -70,10 +74,33 @@ def money(value: float, cur: str) -> str:
     return f"{sign}{num(value)} {cur}"
 
 
-def render_markets(groups: list[tuple[str, bool, list[tuple[Instrument, Quote | Exception]]]]) -> str:
+def portfolio_block(pf: Portfolio | Exception | None) -> list[str]:
+    """Строка «Мой портфель» для экрана рынков."""
+    if pf is None:
+        return []
+    if isinstance(pf, Exception):
+        return ["💼 <b>Мой портфель</b> — нет данных", ""]
+    cur = escape(CUR_SIGN.get(pf.base, pf.base))
+    day = pf.day_change
+    lines = [
+        f"💼 <b>Мой портфель</b>  <code>{num(pf.total, 0)}</code> <i>{cur}</i>",
+        f"За день ({day[0]:%d.%m}): {change(day[1])}" if day else "За день: —",
+        f"С начала года: {change(pf.ytd_pct)}",
+    ]
+    if not day or pf.ytd_pct is None:
+        lines.append("<i>⚙️ нужна настройка отчёта IBKR — см. «🏦 Мой портфель IBKR»</i>")
+    return lines + [""]
+
+
+def render_markets(
+    groups: list[tuple[str, bool, list[tuple[Instrument, Quote | Exception]]]],
+    portfolio: Portfolio | Exception | None = None,
+) -> str:
     lines: list[str] = []
     us_open: bool | None = None
-    for title, us_market, items in groups:
+    for index, (title, us_market, items) in enumerate(groups):
+        if index == 1:
+            lines += portfolio_block(portfolio)
         lines += [title, ""]
         for inst, q in items:
             name = escape(inst.name)
@@ -98,9 +125,6 @@ def render_markets(groups: list[tuple[str, bool, list[tuple[Instrument, Quote | 
 
 def mask(account: str) -> str:
     return account[:1] + "•••" + account[-4:] if len(account) > 5 else account
-
-
-CUR_SIGN = {"USD": "$", "EUR": "€", "GBP": "£", "CHF": "CHF", "RON": "lei"}
 
 
 def table(pf: Portfolio) -> str:
@@ -145,14 +169,6 @@ def render_ibkr(pf: Portfolio) -> str:
         sign = "+" if pf.pnl > 0 else ""
         lines += ["", f"{mark} Результат: <b>{sign}{num(pf.pnl)} {cur}</b> ({sign}{num(pct_total)}%)"]
 
-    ranked = [p for p in pf.positions if p.pnl_pct is not None]
-    if len(ranked) >= 2:
-        best = max(ranked, key=lambda p: p.pnl_pct)
-        worst = min(ranked, key=lambda p: p.pnl_pct)
-        lines += [
-            f"🏆 Лучшая: <b>{escape(best.symbol)}</b> {change(best.pnl_pct)}",
-            f"📉 Худшая: <b>{escape(worst.symbol)}</b> {change(worst.pnl_pct)}",
-        ]
 
     if pf.positions:
         lines += ["", f"📋 <b>Позиции · {len(pf.positions)}</b>", table(pf)]
@@ -188,15 +204,29 @@ def setup(ctx: AppContext) -> Module:
         [Btn(text="🏠 Главное меню", callback_data="core:main")],
     )
 
-    async def markets_view() -> str:
+    async def my_portfolio(user_id: int) -> Portfolio | Exception | None:
+        row = await creds(user_id)
+        if not row:
+            return None
+        try:
+            return await ibkr.portfolio(row["token"], row["query_id"])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("ibkr for markets failed: %r", exc)
+            return exc
+
+    async def markets_view(user_id: int) -> str:
         instruments = [inst for _, _, items in GROUPS for inst in items]
-        quotes = dict(zip((i.symbol for i in instruments), await market.quotes([i.symbol for i in instruments])))
+        quotes_list, pf = await asyncio.gather(
+            market.quotes([i.symbol for i in instruments]), my_portfolio(user_id)
+        )
+        quotes = dict(zip((i.symbol for i in instruments), quotes_list))
         for symbol, q in quotes.items():
             if isinstance(q, Exception):
                 log.warning("quote %s failed: %r", symbol, q)
-        return render_markets([
-            (title, us, [(inst, quotes[inst.symbol]) for inst in items]) for title, us, items in GROUPS
-        ])
+        return render_markets(
+            [(title, us, [(inst, quotes[inst.symbol]) for inst in items]) for title, us, items in GROUPS],
+            pf,
+        )
 
     async def creds(user_id: int):
         return await ctx.db.fetchone("SELECT token, query_id FROM ibkr_accounts WHERE user_id = ?", (user_id,))
@@ -226,12 +256,12 @@ def setup(ctx: AppContext) -> Module:
     @router.callback_query(F.data.in_({"m:portfolio", "pf:refresh"}))
     async def show(call: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
-        await safe_edit(call, await markets_view(), markets_kb)
+        await safe_edit(call, await markets_view(call.from_user.id), markets_kb)
         await call.answer("Обновлено" if call.data == "pf:refresh" else None)
 
     @router.message(Command("market"))
     async def market_cmd(message: Message) -> None:
-        await message.answer(await markets_view(), reply_markup=markets_kb)
+        await message.answer(await markets_view(message.from_user.id), reply_markup=markets_kb)
 
     # ---------- IBKR ----------
     @router.callback_query(F.data.in_({"pf:ibkr", "pf:ibkr:refresh"}))

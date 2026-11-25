@@ -65,6 +65,27 @@ class Portfolio:
     as_of: date | None = None
     positions: list[Position] = field(default_factory=list)
     cash: float | None = None
+    nav_history: dict[date, float] = field(default_factory=dict)  # стоимость счёта по дням
+    period_start: date | None = None
+    period_twr: float | None = None   # доходность за период отчёта (%, без учёта пополнений)
+
+    @property
+    def day_change(self) -> tuple[date, float] | None:
+        """Изменение стоимости за последний день отчёта, %."""
+        days = sorted(d for d, v in self.nav_history.items() if v)
+        if len(days) < 2:
+            return None
+        last, prev = days[-1], days[-2]
+        return last, (self.nav_history[last] / self.nav_history[prev] - 1) * 100
+
+    @property
+    def ytd_pct(self) -> float | None:
+        """Доходность с начала года — если отчёт IBKR построен за период «С начала года»."""
+        if self.period_twr is None or not self.period_start or not self.as_of:
+            return None
+        if self.period_start.year != self.as_of.year or self.period_start > date(self.as_of.year, 1, 7):
+            return None
+        return self.period_twr
 
     @property
     def positions_value(self) -> float:
@@ -114,6 +135,14 @@ def parse_statement(xml_text: str) -> Portfolio:
                 cost_base=_f(op.get("costBasisMoney")) * fx,
                 pnl_base=_f(op.get("fifoPnlUnrealized")) * fx,
             ))
+        for nav in st.iter("ChangeInNAV"):
+            if nav.get("twr") not in (None, ""):
+                pf.period_twr = _f(nav.get("twr"))
+                pf.period_start = _date(nav.get("fromDate")) or _date(st.get("fromDate"))
+        for row in st.iter("EquitySummaryByReportDateInBase"):
+            day = _date(row.get("reportDate"))
+            if day:
+                pf.nav_history[day] = pf.nav_history.get(day, 0.0) + _f(row.get("total"))
         for cr in st.iter("CashReportCurrency"):
             if cr.get("currency") == "BASE_SUMMARY":
                 pf.cash = (pf.cash or 0.0) + _f(cr.get("endingCash"))

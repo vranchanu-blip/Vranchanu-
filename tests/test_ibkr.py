@@ -42,7 +42,7 @@ def test_render_ibkr():
     assert "💰 <b>6 240,50 $</b>" in text
     assert "├ 📈 Бумаги: 5 240,00 $" in text and "└ 💵 Наличные: 1 000,50 $" in text
     assert "🟢 Результат: <b>+90,00 $</b>" in text
-    assert "🏆 Лучшая: <b>AAPL</b>" in text and "📉 Худшая: <b>VWCE</b>" in text
+    assert "Лучшая" not in text and "Худшая" not in text
     table = text[text.index("<pre>") + 5:text.index("</pre>")].split("\n")
     assert table[0].split() == ["Тикер", "Сумма", "Доля", "Итог"]
     assert table[2].split() == ["VWCE", "2", "940", "47,1%", "-6,7%"]
@@ -131,3 +131,46 @@ async def test_follows_redirect(monkeypatch):
     c._http = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
     assert len((await c.portfolio("tok", "1")).positions) == 2
     await c.close()
+
+
+YTD_STATEMENT = STATEMENT.replace(
+    'fromDate="20261124" toDate="20261124" period="LastBusinessDay">',
+    'fromDate="20260101" toDate="20261124" period="YearToDate">'
+    '<ChangeInNAV accountId="U1234567" fromDate="20260101" toDate="20261124" startingValue="5800" '
+    'endingValue="6240.5" twr="5.23" />'
+    '<EquitySummaryInBase>'
+    '<EquitySummaryByReportDateInBase reportDate="20261121" total="6300" />'
+    '<EquitySummaryByReportDateInBase reportDate="20261124" total="6240.5" />'
+    '</EquitySummaryInBase>',
+)
+
+
+def test_day_and_ytd():
+    pf = parse_statement(YTD_STATEMENT)
+    day, pct = pf.day_change
+    assert str(day) == "2026-11-24" and round(pct, 2) == round((6240.5 / 6300 - 1) * 100, 2)
+    assert pf.ytd_pct == 5.23
+
+
+def test_ytd_missing_for_last_day_query():
+    pf = parse_statement(STATEMENT)
+    assert pf.day_change is None and pf.ytd_pct is None
+
+
+def test_markets_portfolio_row_under_indices():
+    from bot.modules.portfolio import render_markets
+    from bot.modules.portfolio.market import Instrument
+
+    text = render_markets(
+        [("📊 Индексы", True, [(Instrument("^GSPC", "S&P 500", "🇺🇸"), RuntimeError())]),
+         ("🪙 Сырьё", False, [(Instrument("SI=F", "Серебро", "🥈"), RuntimeError())])],
+        parse_statement(YTD_STATEMENT),
+    )
+    assert text.index("S&amp;P 500") < text.index("Мой портфель") < text.index("🪙 Сырьё")
+    assert "<code>6 240</code> <i>$</i>" in text
+    assert "За день (24.11): 🔴 <b>-0,94%</b>" in text and "С начала года: 🟢 <b>+5,23%</b>" in text
+    assert "настройка отчёта" not in text
+
+    old = render_markets([("📊", True, []), ("🪙", False, [])], parse_statement(STATEMENT))
+    assert "За день: —" in old and "настройка отчёта IBKR" in old
+    assert "Мой портфель" not in render_markets([("📊", True, []), ("🪙", False, [])], None)
