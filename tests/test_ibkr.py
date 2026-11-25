@@ -39,9 +39,14 @@ def test_parse_statement():
 def test_render_ibkr():
     text = render_ibkr(parse_statement(STATEMENT))
     assert "U•••4567" in text and "24.11.2026" in text
-    assert "💰 Всего: <b>6 240,50 USD</b>" in text
-    assert "<code>AAPL</code> 10 шт · 2 300,00 USD · 36,9%  🟢 <b>+15,00%</b>" in text
-    assert "🔴 <b>-6,67%</b>" in text
+    assert "💰 <b>6 240,50 $</b>" in text
+    assert "├ 📈 Бумаги: 5 240,00 $" in text and "└ 💵 Наличные: 1 000,50 $" in text
+    assert "🟢 Результат: <b>+90,00 $</b>" in text
+    assert "🏆 Лучшая: <b>AAPL</b>" in text and "📉 Худшая: <b>VWCE</b>" in text
+    table = text[text.index("<pre>") + 5:text.index("</pre>")].split("\n")
+    assert table[0].split() == ["Тикер", "Сумма", "Доля", "Итог"]
+    assert table[2].split() == ["VWCE", "2", "940", "47,1%", "-6,7%"]
+    assert len({len(line) for line in table}) == 1        # все строки одной ширины
 
 
 def make_client(handler):

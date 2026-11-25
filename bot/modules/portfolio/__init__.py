@@ -100,34 +100,68 @@ def mask(account: str) -> str:
     return account[:1] + "•••" + account[-4:] if len(account) > 5 else account
 
 
+CUR_SIGN = {"USD": "$", "EUR": "€", "GBP": "£", "CHF": "CHF", "RON": "lei"}
+
+
+def table(pf: Portfolio) -> str:
+    """Позиции моноширинной таблицей: ровные колонки, влезает в ширину телефона."""
+    rows = [("Тикер", "Сумма", "Доля", "Итог")]
+    for p in pf.positions[:MAX_POSITIONS]:
+        share = f"{num(p.value_base / pf.total * 100, 1)}%" if pf.total else "—"
+        pnl = p.pnl_pct
+        rows.append((
+            p.symbol[:6],
+            num(p.value_base, 0),
+            share,
+            "—" if pnl is None else f"{'+' if pnl > 0 else ''}{num(pnl, 1)}%",
+        ))
+    widths = [max(len(r[i]) for r in rows) for i in range(4)]
+    lines = []
+    for i, r in enumerate(rows):
+        lines.append(f"{r[0]:<{widths[0]}}  {r[1]:>{widths[1]}}  {r[2]:>{widths[2]}}  {r[3]:>{widths[3]}}")
+        if i == 0:
+            lines.append("─" * len(lines[0]))
+    return "<pre>" + escape("\n".join(lines)) + "</pre>"
+
+
 def render_ibkr(pf: Portfolio) -> str:
-    cur = escape(pf.base)
-    total = pf.total
-    lines = [
-        "🏦 <b>Портфель IBKR</b>" + (f" · {', '.join(mask(a) for a in pf.accounts)}" if pf.accounts else ""),
-        f"<i>Данные на конец дня {pf.as_of:%d.%m.%Y}</i>" if pf.as_of else "",
-        "",
-        f"💰 Всего: <b>{num(total)} {cur}</b>",
-        f"📈 В бумагах: {num(pf.positions_value)} {cur}",
-    ]
-    if pf.cost:
-        lines.append(f"Нереализованный результат: {change(pf.pnl / pf.cost * 100)}  ({money(pf.pnl, cur)})")
+    cur = escape(CUR_SIGN.get(pf.base, pf.base))
+    head = "🏦 <b>Портфель IBKR</b>"
+    if pf.accounts:
+        head += f" · {', '.join(mask(a) for a in pf.accounts)}"
+    lines = [head]
+    if pf.as_of:
+        lines.append(f"📅 <i>на конец дня {pf.as_of:%d.%m.%Y}</i>")
+
+    lines += ["", f"💰 <b>{num(pf.total)} {cur}</b>"]
+    branch = [f"📈 Бумаги: {num(pf.positions_value)} {cur}"]
     if pf.cash is not None:
-        lines.append(f"💵 Наличные: {num(pf.cash)} {cur}")
+        branch.append(f"💵 Наличные: {num(pf.cash)} {cur}")
+    lines += [("└ " if i == len(branch) - 1 else "├ ") + b for i, b in enumerate(branch)]
+
+    if pf.cost:
+        pct_total = pf.pnl / pf.cost * 100
+        mark = "🟢" if pf.pnl > 0 else "🔴" if pf.pnl < 0 else "⚪"
+        sign = "+" if pf.pnl > 0 else ""
+        lines += ["", f"{mark} Результат: <b>{sign}{num(pf.pnl)} {cur}</b> ({sign}{num(pct_total)}%)"]
+
+    ranked = [p for p in pf.positions if p.pnl_pct is not None]
+    if len(ranked) >= 2:
+        best = max(ranked, key=lambda p: p.pnl_pct)
+        worst = min(ranked, key=lambda p: p.pnl_pct)
+        lines += [
+            f"🏆 Лучшая: <b>{escape(best.symbol)}</b> {change(best.pnl_pct)}",
+            f"📉 Худшая: <b>{escape(worst.symbol)}</b> {change(worst.pnl_pct)}",
+        ]
+
     if pf.positions:
-        lines += ["", "<b>Позиции</b>"]
-        for p in pf.positions[:MAX_POSITIONS]:
-            share = f" · {num(p.value_base / total * 100, 1)}%" if total else ""
-            lines.append(
-                f"<code>{escape(p.symbol)}</code> {qty(p.quantity)} шт · {num(p.value_base)} {cur}{share}  "
-                f"{change(p.pnl_pct)}"
-            )
+        lines += ["", f"📋 <b>Позиции · {len(pf.positions)}</b>", table(pf)]
         if len(pf.positions) > MAX_POSITIONS:
-            lines.append(f"…и ещё {len(pf.positions) - MAX_POSITIONS}")
+            lines.append(f"<i>…и ещё {len(pf.positions) - MAX_POSITIONS}</i>")
     else:
         lines += ["", "Открытых позиций нет."]
-    lines += ["", "<i>Результат — к цене покупки. Отчёт IBKR обновляется раз в день, после закрытия торгов.</i>"]
-    return "\n".join(line for line in lines if line is not None)
+    lines.append(f"<i>Сумма в {cur} · итог — к цене покупки · отчёт IBKR обновляется раз в день</i>")
+    return "\n".join(lines)
 
 
 def kb(*rows: list[Btn]) -> InlineKeyboardMarkup:
