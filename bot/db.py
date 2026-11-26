@@ -63,6 +63,27 @@ CREATE TABLE IF NOT EXISTS todo_items (
     created_at  TEXT NOT NULL
 );
 
+-- ===== Модуль «Запчасти» =====
+CREATE TABLE IF NOT EXISTS parts_settings (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    client_id     TEXT,
+    client_secret TEXT,
+    send_time     TEXT NOT NULL DEFAULT '19:09',
+    min_price     REAL NOT NULL DEFAULT 20,
+    max_price     REAL NOT NULL DEFAULT 5000,
+    per_day       INTEGER NOT NULL DEFAULT 4,
+    queries       TEXT,
+    active        INTEGER NOT NULL DEFAULT 1,
+    last_sent     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS parts_seen (
+    user_id  INTEGER NOT NULL,
+    item_id  TEXT NOT NULL,
+    seen_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT

@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
-from aiogram.methods import AnswerCallbackQuery, DeleteMessage, EditMessageText, SendMessage
+from aiogram.methods import AnswerCallbackQuery, DeleteMessage, EditMessageText, SendMessage, SendPhoto
 from aiogram.types import CallbackQuery, Chat, Location, Message, Update, User
 
 from bot.__main__ import MODULES, UserMiddleware
@@ -26,6 +26,9 @@ class FakeSession(BaseSession):
         if isinstance(method, (SendMessage, EditMessageText)):
             return Message(message_id=len(self.calls), date=datetime.now(),
                            chat=Chat(id=1, type="private"), text=method.text).as_(bot)
+        if isinstance(method, SendPhoto):
+            return Message(message_id=len(self.calls), date=datetime.now(),
+                           chat=Chat(id=1, type="private"), caption=method.caption).as_(bot)
         if isinstance(method, (AnswerCallbackQuery, DeleteMessage)):
             return True
         raise AssertionError(f"unexpected {method!r}")
@@ -120,7 +123,7 @@ async def test_full_flow(env, monkeypatch):
     r = await msg("/start")
     assert "Test!" in r.text and "Чем займёмся" in r.text
     titles = [b.text for row in r.reply_markup.inline_keyboard for b in row]
-    assert titles[:3] == ["🌤 Погода", "💼 Портфель", "📝 Дела"]
+    assert titles[:4] == ["🌤 Погода", "💼 Портфель", "📝 Дела", "🔧 Запчасти"]
 
     # первое место
     r = await cb("m:weather")
